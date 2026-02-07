@@ -25,9 +25,12 @@ const ALLOWED_ORIGINS = [
 app.use(
   cors({
     origin: (origin, cb) => {
-      if (!origin) return cb(null, true); // Postman/curl
+      // без origin — Postman/curl
+      if (!origin) return cb(null, true);
+
+      // сейчас мягко разрешаем (как у тебя)
       if (ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
-      return cb(null, true); // позже ужесточим
+      return cb(null, true);
     },
     credentials: false,
   })
@@ -94,24 +97,72 @@ function toBool(v, def = true) {
   return def;
 }
 
+function toStr(v, def = "") {
+  if (v == null) return def;
+  return String(v);
+}
+
+function toNumOrNull(v) {
+  if (v == null || v === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+function normalizePhone(raw) {
+  const s = String(raw || "").trim();
+  if (!s) return "";
+  const plus = s.startsWith("+") ? "+" : "";
+  const digits = s.replace(/[^\d]/g, "");
+  return plus + digits;
+}
+
+/**
+ * ВАЖНО для твоей БД:
+ * start_at NOT NULL => обязаны формировать его из date+time.
+ * date: "2026-02-07"
+ * time: "14:30"
+ * Возвращаем "2026-02-07T14:30:00"
+ */
+function buildStartAt(date, time) {
+  const d = String(date || "").trim();
+  const t = String(time || "").trim();
+
+  // минимальная проверка формата
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return null;
+  if (!/^\d{2}:\d{2}$/.test(t)) return null;
+
+  return `${d}T${t}:00`;
+}
+
+function isLikelyDate(v) {
+  return typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v.trim());
+}
+
+function isLikelyTime(v) {
+  return typeof v === "string" && /^\d{2}:\d{2}$/.test(v.trim());
+}
+
+function asyncRoute(fn) {
+  return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+}
+
 /* =========================
    HEALTH CHECK
 ========================= */
-app.get("/health", async (req, res) => {
-  try {
+app.get(
+  "/health",
+  asyncRoute(async (req, res) => {
     const now = await dbNow();
     res.json({ ok: true, status: "server is alive", dbTime: now });
-  } catch (err) {
-    console.error("GET /health error:", err);
-    res.status(500).json({ ok: false, error: err.message });
-  }
-});
+  })
+);
 
 /* =========================
    DEBUG (temporary)
 ========================= */
-app.get("/api/_debug/doctors-columns", async (req, res) => {
-  try {
+app.get(
+  "/api/_debug/doctors-columns",
+  asyncRoute(async (req, res) => {
     const r = await pool.query(`
       SELECT column_name, data_type, is_nullable
       FROM information_schema.columns
@@ -119,25 +170,35 @@ app.get("/api/_debug/doctors-columns", async (req, res) => {
       ORDER BY ordinal_position
     `);
     res.json(r.rows);
-  } catch (err) {
-    console.error("GET /api/_debug/doctors-columns error:", err);
-    res.status(500).json({ error: err.message });
-  }
-});
+  })
+);
+
+app.get(
+  "/api/_debug/appointments-columns",
+  asyncRoute(async (req, res) => {
+    const r = await pool.query(`
+      SELECT column_name, data_type, is_nullable
+      FROM information_schema.columns
+      WHERE table_schema='public' AND table_name='appointments'
+      ORDER BY ordinal_position
+    `);
+    res.json(r.rows);
+  })
+);
 
 /* =========================
    API ROUTES
 ========================= */
 
 /* ---------- DOCTORS ----------
-  Твоя реальная таблица сейчас "смешанная":
-  - full_name (NOT NULL)
-  - name (NOT NULL)  <-- из-за этого падало
+  Смешанная схема:
+  - full_name и name (оба NOT NULL у тебя бывало)
   - specialty и speciality
   - id uuid
 */
-app.get("/api/doctors", async (req, res) => {
-  try {
+app.get(
+  "/api/doctors",
+  asyncRoute(async (req, res) => {
     const r = await pool.query(`
       SELECT
         id,
@@ -153,14 +214,12 @@ app.get("/api/doctors", async (req, res) => {
       ORDER BY created_at DESC NULLS LAST
     `);
     res.json(r.rows);
-  } catch (err) {
-    console.error("GET /api/doctors error:", err);
-    res.status(500).json({ error: "Internal Server Error", detail: err.message });
-  }
-});
+  })
+);
 
-app.post("/api/doctors", async (req, res) => {
-  try {
+app.post(
+  "/api/doctors",
+  asyncRoute(async (req, res) => {
     const { name, speciality = "", percent = 0, active = true } = req.body || {};
 
     const nm = String(name || "").trim();
@@ -194,14 +253,12 @@ app.post("/api/doctors", async (req, res) => {
     );
 
     res.status(201).json(r.rows[0]);
-  } catch (err) {
-    console.error("POST /api/doctors error:", err);
-    res.status(500).json({ error: "Internal Server Error", detail: err.message });
-  }
-});
+  })
+);
 
-app.put("/api/doctors/:id", async (req, res) => {
-  try {
+app.put(
+  "/api/doctors/:id",
+  asyncRoute(async (req, res) => {
     const id = String(req.params.id || "").trim();
     if (!isUuid(id)) return res.status(400).json({ error: "invalid doctor id" });
 
@@ -246,207 +303,235 @@ app.put("/api/doctors/:id", async (req, res) => {
 
     if (!r.rows[0]) return res.status(404).json({ error: "doctor not found" });
     res.json(r.rows[0]);
-  } catch (err) {
-    console.error("PUT /api/doctors error:", err);
-    res.status(500).json({ error: "Internal Server Error", detail: err.message });
-  }
-});
+  })
+);
 
-app.delete("/api/doctors/:id", async (req, res) => {
-  try {
+app.delete(
+  "/api/doctors/:id",
+  asyncRoute(async (req, res) => {
     const id = String(req.params.id || "").trim();
     if (!isUuid(id)) return res.status(400).json({ error: "invalid doctor id" });
 
     await pool.query("DELETE FROM doctors WHERE id=$1", [id]);
     res.json({ ok: true });
-  } catch (err) {
-    console.error("DELETE /api/doctors error:", err);
-    res.status(500).json({ error: "Internal Server Error", detail: err.message });
-  }
-});
+  })
+);
 
 /* ---------- SERVICES ----------
-  Оставляю как у тебя было (name/category/price/active).
-  Если у services другая схема — скинешь колонки, подстрою.
+  Схема как ты писал: name/category/price/active (+ updated_at возможно)
+  ID может быть serial/int или uuid — не делаем Number() насильно.
 */
-app.get("/api/services", async (req, res) => {
-  try {
-    const r = await pool.query("SELECT * FROM services ORDER BY id ASC");
+app.get(
+  "/api/services",
+  asyncRoute(async (req, res) => {
+    const r = await pool.query("SELECT * FROM services ORDER BY created_at DESC NULLS LAST, id ASC");
     res.json(r.rows);
-  } catch (err) {
-    console.error("GET /api/services error:", err);
-    res.status(500).json({ error: "Internal Server Error", detail: err.message });
-  }
-});
+  })
+);
 
-app.post("/api/services", async (req, res) => {
-  try {
+app.post(
+  "/api/services",
+  asyncRoute(async (req, res) => {
     const { name, category = "", price = 0, active = true } = req.body || {};
-    if (!name) return res.status(400).json({ error: "name is required" });
+    const nm = String(name || "").trim();
+    if (!nm) return res.status(400).json({ error: "name is required" });
 
     const r = await pool.query(
       `INSERT INTO services (name, category, price, active)
        VALUES ($1, $2, $3, $4)
        RETURNING *`,
-      [String(name).trim(), String(category).trim(), Number(price) || 0, toBool(active, true)]
+      [nm, String(category || "").trim(), Number(price) || 0, toBool(active, true)]
     );
 
     res.status(201).json(r.rows[0]);
-  } catch (err) {
-    console.error("POST /api/services error:", err);
-    res.status(500).json({ error: "Internal Server Error", detail: err.message });
-  }
-});
+  })
+);
 
-app.put("/api/services/:id", async (req, res) => {
-  try {
-    const id = req.params.id;
+app.put(
+  "/api/services/:id",
+  asyncRoute(async (req, res) => {
+    const id = String(req.params.id || "").trim();
     const { name, category = "", price = 0, active = true } = req.body || {};
-    if (!name) return res.status(400).json({ error: "name is required" });
+    const nm = String(name || "").trim();
+    if (!nm) return res.status(400).json({ error: "name is required" });
 
     const r = await pool.query(
       `UPDATE services
        SET name=$1, category=$2, price=$3, active=$4, updated_at=now()
        WHERE id=$5
        RETURNING *`,
-      [String(name).trim(), String(category).trim(), Number(price) || 0, toBool(active, true), id]
+      [nm, String(category || "").trim(), Number(price) || 0, toBool(active, true), id]
     );
 
     if (!r.rows[0]) return res.status(404).json({ error: "service not found" });
     res.json(r.rows[0]);
-  } catch (err) {
-    console.error("PUT /api/services error:", err);
-    res.status(500).json({ error: "Internal Server Error", detail: err.message });
-  }
-});
+  })
+);
 
-app.delete("/api/services/:id", async (req, res) => {
-  try {
-    const id = req.params.id;
+app.delete(
+  "/api/services/:id",
+  asyncRoute(async (req, res) => {
+    const id = String(req.params.id || "").trim();
     await pool.query("DELETE FROM services WHERE id=$1", [id]);
     res.json({ ok: true });
-  } catch (err) {
-    console.error("DELETE /api/services error:", err);
-    res.status(500).json({ error: "Internal Server Error", detail: err.message });
-  }
-});
+  })
+);
 
 /* ---------- APPOINTMENTS ----------
-  ВАЖНО: doctors.id = uuid => doctor_id должен быть uuid.
-  Я принимаю doctorId как uuid строку.
-  service_id оставляю как number (как у тебя было).
+  КЛЮЧЕВО: start_at NOT NULL — заполняем всегда.
+  doctor_id = uuid
+  service_id — может быть int, но на всякий случай разрешаем строку/uuid
 */
-app.get("/api/appointments", async (req, res) => {
-  try {
+app.get(
+  "/api/appointments",
+  asyncRoute(async (req, res) => {
     const r = await pool.query("SELECT * FROM appointments ORDER BY date ASC, time ASC");
     res.json(r.rows);
-  } catch (err) {
-    console.error("GET /api/appointments error:", err);
-    res.status(500).json({ error: "Internal Server Error", detail: err.message });
-  }
-});
+  })
+);
 
-app.post("/api/appointments", async (req, res) => {
-  try {
+app.post(
+  "/api/appointments",
+  asyncRoute(async (req, res) => {
     const a = req.body || {};
 
-    const date = pick(a.date, a.date);
-    const time = pick(a.time, a.time);
-    const doctorId = pick(a.doctorId, a.doctor_id);
-    const serviceId = pick(a.serviceId, a.service_id);
-    const patientName = pick(a.patientName, a.patient_name);
+    const date = toStr(pick(a.date, a.date)).trim();
+    const time = toStr(pick(a.time, a.time)).trim();
 
-    if (!date || !time || !doctorId || !serviceId || !patientName) {
+    const doctorId = toStr(pick(a.doctorId, a.doctor_id)).trim();
+    const serviceIdRaw = pick(a.serviceId, a.service_id);
+    const patientName = toStr(pick(a.patientName, a.patient_name)).trim();
+
+    if (!date || !time || !doctorId || serviceIdRaw == null || !patientName) {
       return res.status(400).json({
         error: "date, time, doctorId, serviceId, patientName are required",
       });
     }
 
-    const doctorUuid = String(doctorId).trim();
-    if (!isUuid(doctorUuid)) {
+    if (!isLikelyDate(date)) return res.status(400).json({ error: "date must be YYYY-MM-DD" });
+    if (!isLikelyTime(time)) return res.status(400).json({ error: "time must be HH:MM" });
+
+    if (!isUuid(doctorId)) {
       return res.status(400).json({ error: "doctorId must be UUID" });
     }
 
-    const phone = pick(a.phone, a.phone) || "";
+    // start_at — обязателен
+    const startAt = buildStartAt(date, time);
+    if (!startAt) return res.status(400).json({ error: "cannot build start_at from date/time" });
+
+    const phone = normalizePhone(pick(a.phone, a.phone) || "");
     const price = Number(pick(a.price, a.price) || 0);
-    const statusVisit = pick(a.statusVisit, a.status_visit) || "scheduled";
-    const statusPayment = pick(a.statusPayment, a.status_payment) || "unpaid";
-    const paymentMethod = pick(a.paymentMethod, a.payment_method) || "none";
-    const note = pick(a.note, a.note) || "";
+    const statusVisit = toStr(pick(a.statusVisit, a.status_visit) || "scheduled");
+    const statusPayment = toStr(pick(a.statusPayment, a.status_payment) || "unpaid");
+    const paymentMethod = toStr(pick(a.paymentMethod, a.payment_method) || "none");
+    const note = toStr(pick(a.note, a.note) || "");
+
+    // service_id: если число — кладём число, иначе строку (на случай uuid)
+    const serviceIdNum = toNumOrNull(serviceIdRaw);
+    const serviceId = serviceIdNum != null ? serviceIdNum : String(serviceIdRaw).trim();
+
+    // ВАЖНО: если в БД service_id INT, а ты пошлёшь UUID — будет ошибка.
+    // Но раньше у тебя ломалось именно Number(serviceId). Я сделал гибко.
 
     const r = await pool.query(
       `INSERT INTO appointments
-        (date, time, doctor_id, patient_name, phone, service_id, price, status_visit, status_payment, payment_method, note)
+        (date, time, start_at, doctor_id, patient_name, phone, service_id, price, status_visit, status_payment, payment_method, note)
        VALUES
-        ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+        ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
        RETURNING *`,
       [
-        String(date),
-        String(time),
-        doctorUuid,
-        String(patientName),
-        String(phone),
-        Number(serviceId),
-        price,
-        String(statusVisit),
-        String(statusPayment),
-        String(paymentMethod),
-        String(note),
+        date,
+        time,
+        startAt,
+        doctorId,
+        patientName,
+        phone,
+        serviceId,
+        Number.isFinite(price) ? price : 0,
+        statusVisit,
+        statusPayment,
+        paymentMethod,
+        note,
       ]
     );
 
     res.status(201).json(r.rows[0]);
-  } catch (err) {
-    console.error("POST /api/appointments error:", err);
-    res.status(500).json({ error: "Internal Server Error", detail: err.message });
-  }
-});
+  })
+);
 
-app.put("/api/appointments/:id", async (req, res) => {
-  try {
-    const id = req.params.id;
+app.put(
+  "/api/appointments/:id",
+  asyncRoute(async (req, res) => {
+    const id = String(req.params.id || "").trim();
     const p = req.body || {};
 
-    const date = pick(p.date, p.date);
-    const time = pick(p.time, p.time);
-    const doctorId = pick(p.doctorId, p.doctor_id);
-    const serviceId = pick(p.serviceId, p.service_id);
+    // берём то, что прислали (частично)
+    const date = p.date != null ? String(p.date).trim() : null;
+    const time = p.time != null ? String(p.time).trim() : null;
+
+    const doctorIdRaw = pick(p.doctorId, p.doctor_id);
+    const serviceIdRaw = pick(p.serviceId, p.service_id);
     const patientName = pick(p.patientName, p.patient_name);
-    const phone = pick(p.phone, p.phone);
-    const price = pick(p.price, p.price);
+    const phone = p.phone;
+    const price = p.price;
     const statusVisit = pick(p.statusVisit, p.status_visit);
     const statusPayment = pick(p.statusPayment, p.status_payment);
     const paymentMethod = pick(p.paymentMethod, p.payment_method);
-    const note = pick(p.note, p.note);
+    const note = p.note;
 
-    const doctorUuid = doctorId != null ? String(doctorId).trim() : null;
-    if (doctorUuid && !isUuid(doctorUuid)) {
+    const doctorId =
+      doctorIdRaw != null ? String(doctorIdRaw).trim() : null;
+
+    if (doctorId && !isUuid(doctorId)) {
       return res.status(400).json({ error: "doctorId must be UUID" });
+    }
+
+    // если меняют date/time — пересчитаем start_at
+    // также поддерживаем startAt/start_at если фронт прислал
+    const startAtRaw = pick(p.startAt, p.start_at);
+    let startAt =
+      startAtRaw != null ? String(startAtRaw).trim() : null;
+
+    // если startAt не прислали, но прислали date/time — построим
+    if (!startAt && date && time) {
+      if (!isLikelyDate(date)) return res.status(400).json({ error: "date must be YYYY-MM-DD" });
+      if (!isLikelyTime(time)) return res.status(400).json({ error: "time must be HH:MM" });
+      startAt = buildStartAt(date, time);
+      if (!startAt) return res.status(400).json({ error: "cannot build start_at from date/time" });
+    }
+
+    // service_id гибко
+    let serviceId = null;
+    if (serviceIdRaw != null) {
+      const n = toNumOrNull(serviceIdRaw);
+      serviceId = n != null ? n : String(serviceIdRaw).trim();
     }
 
     const r = await pool.query(
       `UPDATE appointments SET
         date = COALESCE($1, date),
         time = COALESCE($2, time),
-        doctor_id = COALESCE($3, doctor_id),
-        patient_name = COALESCE($4, patient_name),
-        phone = COALESCE($5, phone),
-        service_id = COALESCE($6, service_id),
-        price = COALESCE($7, price),
-        status_visit = COALESCE($8, status_visit),
-        status_payment = COALESCE($9, status_payment),
-        payment_method = COALESCE($10, payment_method),
-        note = COALESCE($11, note),
+        start_at = COALESCE($3, start_at),
+        doctor_id = COALESCE($4, doctor_id),
+        patient_name = COALESCE($5, patient_name),
+        phone = COALESCE($6, phone),
+        service_id = COALESCE($7, service_id),
+        price = COALESCE($8, price),
+        status_visit = COALESCE($9, status_visit),
+        status_payment = COALESCE($10, status_payment),
+        payment_method = COALESCE($11, payment_method),
+        note = COALESCE($12, note),
         updated_at = now()
-       WHERE id=$12
+       WHERE id=$13
        RETURNING *`,
       [
         date ?? null,
         time ?? null,
-        doctorUuid ?? null,
+        startAt ?? null,
+        doctorId ?? null,
         patientName ?? null,
-        phone ?? null,
-        serviceId != null ? Number(serviceId) : null,
+        phone != null ? normalizePhone(phone) : null,
+        serviceId ?? null,
         price != null ? Number(price) : null,
         statusVisit ?? null,
         statusPayment ?? null,
@@ -458,28 +543,41 @@ app.put("/api/appointments/:id", async (req, res) => {
 
     if (!r.rows[0]) return res.status(404).json({ error: "appointment not found" });
     res.json(r.rows[0]);
-  } catch (err) {
-    console.error("PUT /api/appointments error:", err);
-    res.status(500).json({ error: "Internal Server Error", detail: err.message });
-  }
-});
+  })
+);
 
-app.delete("/api/appointments/:id", async (req, res) => {
-  try {
-    const id = req.params.id;
+app.delete(
+  "/api/appointments/:id",
+  asyncRoute(async (req, res) => {
+    const id = String(req.params.id || "").trim();
     await pool.query("DELETE FROM appointments WHERE id=$1", [id]);
     res.json({ ok: true });
-  } catch (err) {
-    console.error("DELETE /api/appointments error:", err);
-    res.status(500).json({ error: "Internal Server Error", detail: err.message });
-  }
-});
+  })
+);
 
 /* =========================
    404 FALLBACK (API)
 ========================= */
 app.use("/api", (req, res) => {
   res.status(404).json({ error: "API endpoint not found" });
+});
+
+/* =========================
+   ERROR HANDLER (last)
+========================= */
+app.use((err, req, res, next) => {
+  console.error("UNHANDLED ERROR:", err);
+
+  // pg errors часто содержат detail
+  const msg =
+    err?.message ||
+    err?.detail ||
+    "Internal Server Error";
+
+  res.status(500).json({
+    error: "Internal Server Error",
+    detail: msg,
+  });
 });
 
 /* =========================

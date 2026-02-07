@@ -42,7 +42,7 @@ const DEFAULT_API_BASE = "https://kamilovs-crm.onrender.com";
 const API_BASE = normalizeApiBase(
   (window.APP_CONFIG && window.APP_CONFIG.API_BASE) ||
     localStorage.getItem("crm_api_base") ||
-    DEFAULT_API_BASE,
+    DEFAULT_API_BASE
 );
 
 // ====== AUTH TOKEN HELPERS (на будущее, если будет API login) ======
@@ -50,12 +50,47 @@ function getAuthToken() {
   return localStorage.getItem(AUTH_TOKEN_KEY) || "";
 }
 
+// ===== ПОМОЩНИКИ (общие) =====
+function applyBrandTheme() {
+  document.documentElement.style.setProperty("--accent", BRAND_THEME.accent);
+  document.documentElement.style.setProperty("--accent-2", BRAND_THEME.accent2);
+}
+applyBrandTheme();
+
+function toNumber(v, fallback = 0) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function normalizePhone(raw) {
+  const s = String(raw || "").trim();
+  if (!s) return "";
+  const plus = s.startsWith("+") ? "+" : "";
+  const digits = s.replace(/[^\d]/g, "");
+  return plus + digits;
+}
+
+function normalizeName(raw) {
+  return String(raw || "")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+function safeLower(s) {
+  return String(s || "").toLowerCase();
+}
+
+function moneyUZS(n) {
+  const val = Math.max(0, toNumber(n, 0));
+  return `${val.toLocaleString("ru-RU")} UZS`;
+}
+
 // ====== API HELPERS (one entry point) ======
 async function apiFetch(
   path,
-  { method = "GET", body, headers = {}, timeoutMs = 12000 } = {},
+  { method = "GET", body, headers = {}, timeoutMs = 12000 } = {}
 ) {
-  if (!API_BASE) throw new Error("API_BASE не настроен (DEMO режим)");
+  if (!API_BASE) throw new Error("API_BASE не настроен");
 
   const p = String(path || "");
   const safePath = p.startsWith("/") ? p : `/${p}`;
@@ -90,6 +125,7 @@ async function apiFetch(
           data = text;
         }
       } else {
+        // иногда сервер отдаёт текст/HTML — пробуем распарсить, иначе оставим строку
         try {
           data = JSON.parse(text);
         } catch {
@@ -119,7 +155,11 @@ async function apiFetch(
 async function apiHealth() {
   try {
     const r = await apiFetch("/health", { timeoutMs: 7000 });
-    return !!(r && (r.ok === true || r.status === "ok"));
+    // у тебя health возвращает: { ok:true, status:"server is alive", dbTime:"..." }
+    if (!r) return false;
+    if (r.ok === true) return true;
+    if (typeof r.status === "string" && r.status.toLowerCase().includes("alive")) return true;
+    return false;
   } catch {
     return false;
   }
@@ -129,45 +169,15 @@ async function apiHealth() {
 const DEMO_USER = { username: "admin", password: "samandar014" };
 
 const DEMO_DOCTORS = [
-  {
-    id: 1,
-    name: "Д-р Ахмедов",
-    speciality: "Терапевт",
-    percent: 40,
-    active: true,
-  },
+  { id: 1, name: "Д-р Ахмедов", speciality: "Терапевт", percent: 40, active: true },
   { id: 2, name: "Д-р Камилов", speciality: "УЗИ", percent: 35, active: true },
-  {
-    id: 3,
-    name: "Д-р Саидова",
-    speciality: "Кардиолог",
-    percent: 45,
-    active: true,
-  },
+  { id: 3, name: "Д-р Саидова", speciality: "Кардиолог", percent: 45, active: true },
 ];
 
 const DEMO_SERVICES = [
-  {
-    id: 1,
-    name: "Первичная консультация",
-    category: "Консультации",
-    price: 200000,
-    active: true,
-  },
-  {
-    id: 2,
-    name: "УЗИ брюшной полости",
-    category: "УЗИ",
-    price: 300000,
-    active: true,
-  },
-  {
-    id: 3,
-    name: "Контрольный приём",
-    category: "Консультации",
-    price: 150000,
-    active: true,
-  },
+  { id: 1, name: "Первичная консультация", category: "Консультации", price: 200000, active: true },
+  { id: 2, name: "УЗИ брюшной полости", category: "УЗИ", price: 300000, active: true },
+  { id: 3, name: "Контрольный приём", category: "Консультации", price: 150000, active: true },
 ];
 
 // ====== APP STATE ======
@@ -184,65 +194,59 @@ let currentDoctorId = null;
 let currentServiceId = null;
 let currentPatientKey = null;
 
-// ===== ПОМОЩНИКИ =====
-function applyBrandTheme() {
-  document.documentElement.style.setProperty("--accent", BRAND_THEME.accent);
-  document.documentElement.style.setProperty("--accent-2", BRAND_THEME.accent2);
-}
-applyBrandTheme();
-
-function formatDateISO(date) {
-  // ЛОКАЛЬНАЯ дата YYYY-MM-DD (без UTC-сдвига)
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
+// ====== НОРМАЛИЗАЦИЯ (чтобы фронт всегда работал с показать/сохранить) ======
+function normalizeDoctor(d) {
+  if (!d) return null;
+  return {
+    id: String(d.id ?? ""),
+    name: d.name ?? d.full_name ?? "",
+    speciality: d.speciality ?? d.specialty ?? "",
+    percent: toNumber(d.percent, 0),
+    active: d.active !== false,
+  };
 }
 
-function toNumber(v, fallback = 0) {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : fallback;
+function normalizeService(s) {
+  if (!s) return null;
+  return {
+    id: String(s.id ?? ""),
+    name: s.name ?? "",
+    category: s.category ?? "",
+    price: toNumber(s.price, 0),
+    active: s.active !== false,
+  };
 }
 
-function normalizePhone(raw) {
-  const s = String(raw || "").trim();
-  if (!s) return "";
-  const plus = s.startsWith("+") ? "+" : "";
-  const digits = s.replace(/[^\d]/g, "");
-  return plus + digits;
-}
-
-function normalizeName(raw) {
-  return String(raw || "")
-    .trim()
-    .replace(/\s+/g, " ");
-}
-
-function safeLower(s) {
-  return String(s || "").toLowerCase();
-}
-
-function moneyUZS(n) {
-  const val = Math.max(0, toNumber(n, 0));
-  return `${val.toLocaleString("ru-RU")} UZS`;
+function normalizeAppointment(a) {
+  if (!a) return null;
+  return {
+    id: String(a.id ?? ""),
+    date: a.date ?? "",
+    time: a.time ?? "",
+    doctorId: String(a.doctorId ?? a.doctor_id ?? ""),
+    serviceId: String(a.serviceId ?? a.service_id ?? ""),
+    patientName: a.patientName ?? a.patient_name ?? "",
+    phone: a.phone ?? "",
+    price: toNumber(a.price, 0),
+    statusVisit: a.statusVisit ?? a.status_visit ?? "scheduled",
+    statusPayment: a.statusPayment ?? a.status_payment ?? "unpaid",
+    paymentMethod: a.paymentMethod ?? a.payment_method ?? "none",
+    note: a.note ?? "",
+  };
 }
 
 // ====== API METHODS (ВАЖНО: /api/*) ======
 const api = {
   // Doctors
   getDoctors: () => apiFetch("/api/doctors"),
-  createDoctor: (payload) =>
-    apiFetch("/api/doctors", { method: "POST", body: payload }),
-  updateDoctor: (id, payload) =>
-    apiFetch(`/api/doctors/${id}`, { method: "PUT", body: payload }),
+  createDoctor: (payload) => apiFetch("/api/doctors", { method: "POST", body: payload }),
+  updateDoctor: (id, payload) => apiFetch(`/api/doctors/${id}`, { method: "PUT", body: payload }),
   deleteDoctor: (id) => apiFetch(`/api/doctors/${id}`, { method: "DELETE" }),
 
   // Services
   getServices: () => apiFetch("/api/services"),
-  createService: (payload) =>
-    apiFetch("/api/services", { method: "POST", body: payload }),
-  updateService: (id, payload) =>
-    apiFetch(`/api/services/${id}`, { method: "PUT", body: payload }),
+  createService: (payload) => apiFetch("/api/services", { method: "POST", body: payload }),
+  updateService: (id, payload) => apiFetch(`/api/services/${id}`, { method: "PUT", body: payload }),
   deleteService: (id) => apiFetch(`/api/services/${id}`, { method: "DELETE" }),
 
   // Appointments
@@ -250,12 +254,9 @@ const api = {
     const qs = new URLSearchParams(params).toString();
     return apiFetch(`/api/appointments${qs ? `?${qs}` : ""}`);
   },
-  createAppointment: (payload) =>
-    apiFetch("/api/appointments", { method: "POST", body: payload }),
-  updateAppointment: (id, payload) =>
-    apiFetch(`/api/appointments/${id}`, { method: "PUT", body: payload }),
-  deleteAppointment: (id) =>
-    apiFetch(`/api/appointments/${id}`, { method: "DELETE" }),
+  createAppointment: (payload) => apiFetch("/api/appointments", { method: "POST", body: payload }),
+  updateAppointment: (id, payload) => apiFetch(`/api/appointments/${id}`, { method: "PUT", body: payload }),
+  deleteAppointment: (id) => apiFetch(`/api/appointments/${id}`, { method: "DELETE" }),
 };
 
 // ====== ARCHIVE (сейчас local fallback, позже подключим API) ======
@@ -270,10 +271,7 @@ function loadArchivedPatientsSetLocal() {
   }
 }
 function saveArchivedPatientsSetLocal(set) {
-  localStorage.setItem(
-    STORAGE_PATIENTS_ARCHIVE,
-    JSON.stringify(Array.from(set.values())),
-  );
+  localStorage.setItem(STORAGE_PATIENTS_ARCHIVE, JSON.stringify(Array.from(set.values())));
 }
 function archivePatientKey(patientKey) {
   state.archivedPatients.add(patientKey);
@@ -333,12 +331,12 @@ function nextPaymentStatus(s) {
 }
 
 function hasSlotConflict(all, { date, time, doctorId }, excludeId = null) {
-  return all.some(
+  return (Array.isArray(all) ? all : []).some(
     (a) =>
       a.date === date &&
       a.time === time &&
-      a.doctorId === doctorId &&
-      (excludeId == null || a.id !== excludeId),
+      String(a.doctorId) === String(doctorId) &&
+      (excludeId == null || String(a.id) !== String(excludeId))
   );
 }
 
@@ -446,15 +444,9 @@ const reportDoctorTotals = document.getElementById("reportDoctorTotals");
 const reportClinicTotal = document.getElementById("reportClinicTotal");
 const reportMonthInput = document.getElementById("reportMonth");
 const reportYearInput = document.getElementById("reportYear");
-const reportMonthDoctorTotals = document.getElementById(
-  "reportMonthDoctorTotals",
-);
-const reportMonthClinicTotal = document.getElementById(
-  "reportMonthClinicTotal",
-);
-const reportYearDoctorTotals = document.getElementById(
-  "reportYearDoctorTotals",
-);
+const reportMonthDoctorTotals = document.getElementById("reportMonthDoctorTotals");
+const reportMonthClinicTotal = document.getElementById("reportMonthClinicTotal");
+const reportYearDoctorTotals = document.getElementById("reportYearDoctorTotals");
 const reportYearClinicTotal = document.getElementById("reportYearClinicTotal");
 
 // Модалка редактирования записи
@@ -467,16 +459,14 @@ const editApptPatientInput = document.getElementById("editApptPatient");
 const editApptPhoneInput = document.getElementById("editApptPhone");
 const editApptServiceSelect = document.getElementById("editApptService");
 const editApptPriceInput = document.getElementById("editApptPrice");
-const editApptStatusVisitSelect = document.getElementById(
-  "editApptStatusVisit",
-);
-const editApptStatusPaymentSelect = document.getElementById(
-  "editApptStatusPayment",
-);
-const editApptPaymentMethodSelect = document.getElementById(
-  "editApptPaymentMethod",
-);
+const editApptStatusVisitSelect = document.getElementById("editApptStatusVisit");
+const editApptStatusPaymentSelect = document.getElementById("editApptStatusPayment");
+const editApptPaymentMethodSelect = document.getElementById("editApptPaymentMethod");
 const editApptCancelBtn = document.getElementById("editApptCancelBtn");
+
+// ===== АЛИАСЫ (чтобы нигде не было doctorSelect is not defined) =====
+const doctorSelect = apptDoctorSelect;
+const serviceSelect = apptServiceSelect;
 
 // ===== ЛОГИН / ЛОГАУТ =====
 function showLogin() {
@@ -525,9 +515,7 @@ if (loginPassword) {
 if (logoutBtn) {
   logoutBtn.addEventListener("click", () => {
     localStorage.removeItem(LOGIN_KEY);
-    // токен тоже можем чистить, если используешь:
     // localStorage.removeItem(AUTH_TOKEN_KEY);
-
     showLogin();
     showToast("Вы вышли из CRM", "info");
   });
@@ -536,43 +524,56 @@ if (logoutBtn) {
 // ===== СЕЛЕКТЫ =====
 function fillDoctorSelect(selectEl, doctors, includeAll = false) {
   if (!selectEl) return;
+
   const prev = selectEl.value;
   selectEl.innerHTML = "";
-  if (includeAll) {
-    const opt = document.createElement("option");
-    opt.value = "";
-    opt.textContent = "Все";
-    selectEl.appendChild(opt);
-  }
-  doctors
-    .filter((d) => d.active)
+
+  const ph = document.createElement("option");
+  ph.value = "";
+  ph.textContent = includeAll ? "Все" : "Выберите врача";
+  selectEl.appendChild(ph);
+
+  (Array.isArray(doctors) ? doctors : [])
+    .filter((d) => d && d.active)
     .forEach((doc) => {
       const option = document.createElement("option");
       option.value = String(doc.id);
-      option.textContent = doc.name;
+      option.textContent = doc.name || "Без имени";
       selectEl.appendChild(option);
     });
 
   if (prev && Array.from(selectEl.options).some((o) => o.value === prev)) {
     selectEl.value = prev;
+  } else {
+    selectEl.value = "";
   }
 }
 
 function fillServiceSelect(selectEl, services, onlyActive = true) {
   if (!selectEl) return;
+
   const prev = selectEl.value;
   selectEl.innerHTML = "";
-  services
-    .filter((s) => (onlyActive ? s.active : true))
+
+  const ph = document.createElement("option");
+  ph.value = "";
+  ph.textContent = "Выберите услугу";
+  selectEl.appendChild(ph);
+
+  (Array.isArray(services) ? services : [])
+    .filter((s) => s && (onlyActive ? s.active : true))
     .forEach((srv) => {
       const option = document.createElement("option");
       option.value = String(srv.id);
-      option.textContent = `${srv.name} (${srv.price.toLocaleString("ru-RU")} UZS)`;
+      const price = toNumber(srv.price, 0);
+      option.textContent = `${srv.name || "Без названия"} (${price.toLocaleString("ru-RU")} UZS)`;
       selectEl.appendChild(option);
     });
 
   if (prev && Array.from(selectEl.options).some((o) => o.value === prev)) {
     selectEl.value = prev;
+  } else {
+    selectEl.value = "";
   }
 }
 
@@ -591,11 +592,9 @@ function refreshSelectsOnly() {
 
 // ===== API BOOTSTRAP =====
 async function bootstrapData() {
-  // архив пациентов (локальный fallback)
   state.archivedPatients = loadArchivedPatientsSetLocal();
 
   if (!API_BASE) {
-    // API_BASE пустой — это ошибка конфигурации
     setDoctors([]);
     setServices([]);
     setAppointments([]);
@@ -613,15 +612,27 @@ async function bootstrapData() {
   }
 
   try {
-    const [doctors, services, appointments] = await Promise.all([
+    const [doctorsRaw, servicesRaw, apptsRaw] = await Promise.all([
       api.getDoctors(),
       api.getServices(),
       api.getAppointments(),
     ]);
 
-    setDoctors(Array.isArray(doctors) ? doctors : []);
-    setServices(Array.isArray(services) ? services : []);
-    setAppointments(Array.isArray(appointments) ? appointments : []);
+    const doctors = (Array.isArray(doctorsRaw) ? doctorsRaw : [])
+      .map(normalizeDoctor)
+      .filter(Boolean);
+
+    const services = (Array.isArray(servicesRaw) ? servicesRaw : [])
+      .map(normalizeService)
+      .filter(Boolean);
+
+    const appointments = (Array.isArray(apptsRaw) ? apptsRaw : [])
+      .map(normalizeAppointment)
+      .filter(Boolean);
+
+    setDoctors(doctors);
+    setServices(services);
+    setAppointments(appointments);
 
     return { mode: "api", ok: true };
   } catch (e) {
@@ -633,6 +644,7 @@ async function bootstrapData() {
     return { mode: "api_error", ok: false, error: e };
   }
 }
+
 
 // ===== ИНИЦИАЛИЗАЦИЯ ПОСЛЕ ЛОГИНА (ОДИН РАЗ) =====
 let _afterLoginInitialized = false;
@@ -661,30 +673,30 @@ function initAfterLoginOnce() {
   }
   if (reportYearInput) reportYearInput.value = String(today.getFullYear());
 
-  // 1) показываем быстрый UI
+  // 1) быстрый UI (может быть пустым до загрузки)
   refreshSelectsOnly();
   renderAll();
 
   // 2) грузим реальные данные
-  _bootstrapPromise = bootstrapData().then(() => {
-    state.ready = true;
-
+  _bootstrapPromise = bootstrapData().then((result) => {
+    state.ready = !!(result && result.ok);
     refreshSelectsOnly();
 
-    // автоустановка цены по первой активной услуге
+    // автоустановка цены только если услуга ещё не выбрана
     const services = getServices().filter((s) => s.active);
     if (services.length && apptServiceSelect && apptPriceInput) {
-      if (!apptServiceSelect.value)
+      if (!String(apptServiceSelect.value || "").trim()) {
         apptServiceSelect.value = String(services[0].id);
+      }
       const selected =
-        services.find(
-          (s) => String(s.id) === String(apptServiceSelect.value),
-        ) || services[0];
+        services.find((s) => String(s.id) === String(apptServiceSelect.value)) || services[0];
       apptPriceInput.value = selected.price;
     }
 
     renderAll();
-    showToast(API_BASE ? "Данные загружены" : "DEMO режим", "success");
+
+    if (result?.ok) showToast("Данные загружены", "success");
+    else showToast("Данные не загрузились (проверь сервер)", "error");
   });
 }
 
@@ -745,13 +757,13 @@ if (navButtons && views) {
   });
 }
 
-// ===== АВТОПОДСТАНОВКА ЦЕНЫ =====
+// ===== АВТОПОДСТАНОВКА ЦЕНЫ (FIX: ids строковые) =====
 function bindServicePrice(selectEl, priceEl) {
   if (!selectEl || !priceEl) return;
   selectEl.addEventListener("change", () => {
     const services = getServices();
-    const id = Number(selectEl.value);
-    const service = services.find((s) => Number(s.id) === id);
+    const id = String(selectEl.value || "");
+    const service = services.find((s) => String(s.id) === id);
     if (service) priceEl.value = service.price;
   });
 }
@@ -763,19 +775,17 @@ if (apptForm) {
   apptForm.addEventListener("submit", async (e) => {
     e.preventDefault();
 
-    const date = apptDateInput?.value;
-    const time = apptTimeInput?.value;
-    const doctorId = doctorSelect.value.trim();
+    const date = (apptDateInput?.value || "").trim();
+    const time = (apptTimeInput?.value || "").trim();
+    const doctorId = String(doctorSelect?.value || "").trim(); // UUID строка
     const patientName = normalizeName(apptPatientInput?.value || "");
     const phone = normalizePhone(apptPhoneInput?.value || "");
-    const serviceId = serviceSelect.value.trim();
+    const serviceId = String(serviceSelect?.value || "").trim(); // обычно число строкой
     const price = toNumber(apptPriceInput?.value || 0);
+
     const statusVisit = apptStatusVisitSelect?.value || "scheduled";
     const statusPayment = apptStatusPaymentSelect?.value || "unpaid";
     const paymentMethod = apptPaymentMethodSelect?.value || "none";
-
-    console.log({ date, time, doctorId, patientName, serviceId });
-
 
     if (!date) return showToast("Выберите дату", "error");
     if (!time) return showToast("Выберите время", "error");
@@ -783,35 +793,21 @@ if (apptForm) {
     if (!patientName) return showToast("Введите пациента", "error");
     if (!serviceId) return showToast("Выберите услугу", "error");
 
+    // локальная проверка конфликта (серверную позже тоже сделаем)
     const allExisting = getAppointments();
     if (hasSlotConflict(allExisting, { date, time, doctorId })) {
       showToast("На это время у врача уже есть запись", "error");
       return;
     }
 
-
-    // ВАЖНО: для backend используем snake_case
+    // backend принимает camelCase и snake_case — отправляем чистый camelCase
     const payloadApi = {
       date,
       time,
-      doctorId: doctorId,
-      serviceId: serviceId,
-      patientName: patientName,
-      phone,
-      price,
-      statusVisit: statusVisit,
-      statusPayment: statusPayment,
-      paymentMethod: paymentMethod,
-    };
-
-    // локальная форма (как у тебя по UI)
-    const payloadLocal = {
-      date,
-      time,
-      doctorId,
+      doctorId,          // UUID строка
+      serviceId,         // число строкой ок
       patientName,
       phone,
-      serviceId,
       price,
       statusVisit,
       statusPayment,
@@ -821,38 +817,19 @@ if (apptForm) {
     try {
       let created = null;
 
-      if (API_BASE) {
-        created = await api.createAppointment(payloadApi);
-      }
+      // только через API (DEMO fallback можно вернуть позже, но сейчас лучше “истина одна”)
+      created = await api.createAppointment(payloadApi);
 
-      // fallback если API не настроен / упал
-      if (!created) {
-        created = {
-          id: Date.now(),
-          ...payloadLocal,
-          createdAt: new Date().toISOString(),
-        };
-      } else {
-        // если сервер вернул snake_case — аккуратно приводим к локальному виду
-        created = {
-          id: created.id,
-          date: created.date,
-          time: created.time,
-          doctorId: created.doctor_id ?? doctorId,
-          serviceId: created.service_id ?? serviceId,
-          patientName: created.patient_name ?? patientName,
-          phone: created.phone ?? phone,
-          price: created.price ?? price,
-          statusVisit: created.status_visit ?? statusVisit,
-          statusPayment: created.status_payment ?? statusPayment,
-          paymentMethod: created.payment_method ?? paymentMethod,
-          createdAt: created.created_at ?? new Date().toISOString(),
-          updatedAt: created.updated_at ?? null,
-        };
-      }
+      // приводим ответ сервера к нашему локальному виду через normalizeAppointment()
+      // normalizeAppointment() у тебя уже есть в первом “идеальном” куске
+      const normalized = normalizeAppointment(created) || {
+        id: String(created?.id ?? Date.now()),
+        ...payloadApi,
+      };
 
-      setAppointments([...getAppointments(), created]);
+      setAppointments([...getAppointments(), normalized]);
 
+      // очистка формы
       if (apptTimeInput) apptTimeInput.value = "";
       if (apptPatientInput) apptPatientInput.value = "";
       if (apptPhoneInput) apptPhoneInput.value = "";
@@ -869,7 +846,7 @@ if (apptForm) {
 // ===== DASHBOARD PRO: score + no-show + timeline + doctor load =====
 function getTodayAppointmentsFiltered() {
   const todayISO = formatDateISO(new Date());
-  const doctorFilter = dashDoctorFilter?.value || "";
+  const doctorFilter = String(dashDoctorFilter?.value || "").trim();
   const all = getAppointments();
 
   return all.filter((a) => {
@@ -879,29 +856,29 @@ function getTodayAppointmentsFiltered() {
   });
 }
 
-// ✅ твоя “основная” функция — редактирование одного поля (key/value)
+// ✅ редактирование одного поля (key/value)
 async function setApptField(apptId, key, value) {
   // 1) обновим локально для мгновенного UI
   const all = getAppointments();
-  const i = all.findIndex((a) => Number(a.id) === Number(apptId));
+  const i = all.findIndex((a) => String(a.id) === String(apptId));
   if (i === -1) return;
 
   all[i] = { ...all[i], [key]: value };
   setAppointments(all);
   renderAll();
 
-  // 2) отправим патч на сервер
+  // 2) отправим PATCH/PUT на сервер (у нас PUT, но частичный апдейт ок)
   const patchMap = {
     date: "date",
     time: "time",
-    doctorId: "doctor_id",
-    serviceId: "service_id",
-    patientName: "patient_name",
+    doctorId: "doctorId",           // ✅ оставляем camelCase — backend поддерживает
+    serviceId: "serviceId",
+    patientName: "patientName",
     phone: "phone",
     price: "price",
-    statusVisit: "status_visit",
-    statusPayment: "status_payment",
-    paymentMethod: "payment_method",
+    statusVisit: "statusVisit",
+    statusPayment: "statusPayment",
+    paymentMethod: "paymentMethod",
     note: "note",
   };
 
@@ -909,111 +886,44 @@ async function setApptField(apptId, key, value) {
   if (!serverKey) return;
 
   try {
-    const saved = await api.updateAppointment(apptId, {
-      [serverKey]:
-        key === "doctorId" || key === "serviceId"
-          ? value == null
-            ? null
-            : Number(value)
-          : value,
-    });
+    const patch = { [serverKey]: value };
+
+    // ВАЖНО: UUID врача НЕ конвертируем в Number
+    if (key === "serviceId") patch[serverKey] = String(value);
+    if (key === "doctorId") patch[serverKey] = String(value);
+
+    const saved = await api.updateAppointment(apptId, patch);
 
     // синхронизируем ответ сервера (и приводим к локальному виду)
-    const j = getAppointments().findIndex(
-      (a) => Number(a.id) === Number(apptId),
-    );
+    const j = getAppointments().findIndex((a) => String(a.id) === String(apptId));
     if (j !== -1 && saved && typeof saved === "object") {
-      const merged = {
-        id: saved.id,
-        date: saved.date,
-        time: saved.time,
-        doctorId: saved.doctor_id ?? getAppointments()[j].doctorId,
-        serviceId: saved.service_id ?? getAppointments()[j].serviceId,
-        patientName: saved.patient_name ?? getAppointments()[j].patientName,
-        phone: saved.phone ?? getAppointments()[j].phone,
-        price: saved.price ?? getAppointments()[j].price,
-        statusVisit: saved.status_visit ?? getAppointments()[j].statusVisit,
-        statusPayment:
-          saved.status_payment ?? getAppointments()[j].statusPayment,
-        paymentMethod:
-          saved.payment_method ?? getAppointments()[j].paymentMethod,
-        note: saved.note ?? getAppointments()[j].note,
-        createdAt: saved.created_at ?? getAppointments()[j].createdAt,
-        updatedAt: saved.updated_at ?? getAppointments()[j].updatedAt,
-      };
+      const merged = normalizeAppointment(saved) || getAppointments()[j];
       const arr = getAppointments();
-      arr[j] = merged;
+      arr[j] = { ...arr[j], ...merged };
       setAppointments(arr);
       renderAll();
     }
   } catch (e) {
     console.error(e);
-    // showToast(String(e.message || e), "error");
   }
 }
 
-// ✅ отдельная функция для PATCH-обновления (чтобы не конфликтовала по имени)
+// ✅ отдельная функция для PATCH-обновления (единый путь)
 async function setApptPatch(apptId, patch) {
   const all = getAppointments();
-  const idx = all.findIndex((a) => Number(a.id) === Number(apptId));
+  const idx = all.findIndex((a) => String(a.id) === String(apptId));
   if (idx === -1) return false;
 
   const updated = { ...all[idx], ...patch };
 
   try {
-    if (API_BASE) {
-      // переводим patch в snake_case перед отправкой
-      const map = {
-        date: "date",
-        time: "time",
-        doctorId: "doctorId",
-        serviceId: "serviceId",
-        patientName: "patientName",
-        phone: "phone",
-        price: "price",
-        statusVisit: "statusVisit",
-        statusPayment: "statusPayment",
-        paymentMethod: "paymentMethod",
-        note: "note",
-      };
+    // отправляем patch как есть (camelCase), backend примет
+    const server = await api.updateAppointment(apptId, patch);
 
-      const serverPatch = {};
-      Object.keys(patch || {}).forEach((k) => {
-        const sk = map[k];
-        if (!sk) return;
-        const v = patch[k];
-        serverPatch[sk] =
-          k === "doctorId" || k === "serviceId"
-            ? v == null
-              ? null
-              : Number(v)
-            : v;
-      });
-
-      const server = await api.updateAppointment(apptId, serverPatch);
-
-      all[idx] =
-        server && typeof server === "object"
-          ? {
-              id: server.id,
-              date: server.date,
-              time: server.time,
-              doctorId: server.doctor_id ?? updated.doctorId,
-              serviceId: server.service_id ?? updated.serviceId,
-              patientName: server.patient_name ?? updated.patientName,
-              phone: server.phone ?? updated.phone,
-              price: server.price ?? updated.price,
-              statusVisit: server.status_visit ?? updated.statusVisit,
-              statusPayment: server.status_payment ?? updated.statusPayment,
-              paymentMethod: server.payment_method ?? updated.paymentMethod,
-              note: server.note ?? updated.note,
-              createdAt: server.created_at ?? updated.createdAt,
-              updatedAt: server.updated_at ?? updated.updatedAt,
-            }
-          : updated;
-    } else {
-      all[idx] = updated;
-    }
+    all[idx] =
+      server && typeof server === "object"
+        ? (normalizeAppointment(server) || updated)
+        : updated;
 
     setAppointments(all);
     return true;
@@ -1067,11 +977,7 @@ function renderTimelineForToday(appts) {
   const wrap = document.createElement("div");
   wrap.className = "timeline";
 
-  for (
-    let t = TIMELINE_START_MIN;
-    t <= TIMELINE_END_MIN;
-    t += TIMELINE_STEP_MIN
-  ) {
+  for (let t = TIMELINE_START_MIN; t <= TIMELINE_END_MIN; t += TIMELINE_STEP_MIN) {
     const hh = String(Math.floor(t / 60)).padStart(2, "0");
     const mm = String(t % 60).padStart(2, "0");
     const key = `${hh}:${mm}`;
@@ -1092,10 +998,8 @@ function renderTimelineForToday(appts) {
         </div>
       `;
     } else {
-      const doctor = doctors.find((d) => Number(d.id) === Number(a.doctorId));
-      const service = services.find(
-        (s) => Number(s.id) === Number(a.serviceId),
-      );
+      const doctor = doctors.find((d) => String(d.id) === String(a.doctorId));
+      const service = services.find((s) => String(s.id) === String(a.serviceId));
 
       row.innerHTML = `
         <div class="timeline-left">
@@ -1109,40 +1013,28 @@ function renderTimelineForToday(appts) {
         </div>
       `;
 
-      row
-        .querySelector('[data-role="visit"]')
-        ?.addEventListener("click", async () => {
-          const ok = await setApptPatch(a.id, {
-            statusVisit: nextVisitStatus(a.statusVisit),
-          });
-          if (ok) {
-            showToast("Статус визита изменён", "info");
-            renderAll();
-          }
-        });
+      row.querySelector('[data-role="visit"]')?.addEventListener("click", async () => {
+        const ok = await setApptPatch(a.id, { statusVisit: nextVisitStatus(a.statusVisit) });
+        if (ok) {
+          showToast("Статус визита изменён", "info");
+          renderAll();
+        }
+      });
 
-      row
-        .querySelector('[data-role="pay"]')
-        ?.addEventListener("click", async () => {
-          const ok = await setApptPatch(a.id, {
-            statusPayment: nextPaymentStatus(a.statusPayment),
-          });
-          if (ok) {
-            showToast("Статус оплаты изменён", "info");
-            renderAll();
-          }
-        });
+      row.querySelector('[data-role="pay"]')?.addEventListener("click", async () => {
+        const ok = await setApptPatch(a.id, { statusPayment: nextPaymentStatus(a.statusPayment) });
+        if (ok) {
+          showToast("Статус оплаты изменён", "info");
+          renderAll();
+        }
+      });
 
       row.querySelector('[data-role="jump"]')?.addEventListener("click", () => {
         navButtons.forEach((b) => b.classList.remove("active"));
-        document
-          .querySelector('.nav-btn[data-view="appointments"]')
-          ?.classList.add("active");
+        document.querySelector('.nav-btn[data-view="appointments"]')?.classList.add("active");
 
         views.forEach((v) => v.classList.remove("view--active"));
-        document
-          .getElementById("view-appointments")
-          ?.classList.add("view--active");
+        document.getElementById("view-appointments")?.classList.add("view--active");
 
         pageTitle.textContent = "Записи";
         pageSubtitle.textContent = "Создание и управление записями на приём";
@@ -1165,10 +1057,11 @@ function renderTimelineForToday(appts) {
 }
 
 function getRangeFilteredAppointments() {
-  const from = rangeFromInput?.value || "";
-  const to = rangeToInput?.value || "";
-  const doctorFilter = rangeDoctorSelect?.value || "";
+  const from = (rangeFromInput?.value || "").trim();
+  const to = (rangeToInput?.value || "").trim();
+  const doctorFilter = String(rangeDoctorSelect?.value || "").trim();
   const searchQuery = safeLower(rangeSearchInput?.value).trim();
+
   const all = getAppointments();
 
   return all.filter((a) => {
@@ -1184,6 +1077,7 @@ function getRangeFilteredAppointments() {
   });
 }
 
+
 function renderDoctorLoadForRange() {
   if (!dashDoctorLoadBody) return;
 
@@ -1191,10 +1085,11 @@ function renderDoctorLoadForRange() {
   const rangeAppts = getRangeFilteredAppointments();
 
   const totals = new Map();
-  doctors.forEach((d) => totals.set(Number(d.id), 0));
+  doctors.forEach((d) => totals.set(String(d.id), 0));
 
   rangeAppts.forEach((a) => {
-    const did = Number(a.doctorId);
+    const did = String(a.doctorId || "");
+    if (!did) return;
     totals.set(did, (totals.get(did) || 0) + 1);
   });
 
@@ -1204,7 +1099,7 @@ function renderDoctorLoadForRange() {
   grid.className = "doctor-load-grid";
 
   doctors.forEach((d) => {
-    const did = Number(d.id);
+    const did = String(d.id);
     const count = totals.get(did) || 0;
     const pct = Math.round((count / max) * 100);
 
@@ -1261,9 +1156,9 @@ function renderDashboard() {
       .sort((a, b) => a.time.localeCompare(b.time))
       .forEach((a) => {
         const tr = document.createElement("tr");
-        const doctor = doctors.find((d) => Number(d.id) === Number(a.doctorId));
+        const doctor = doctors.find((d) => String(d.id) === String(a.doctorId));
         const service = services.find(
-          (s) => Number(s.id) === Number(a.serviceId),
+          (s) => String(s.id) === String(a.serviceId),
         );
 
         tr.innerHTML = `
@@ -1285,7 +1180,6 @@ function renderDashboard() {
           </td>
         `;
 
-        // ВАЖНО: setApptField у тебя (id, key, value), а патч — через setApptPatch
         tr.querySelector('[data-role="visit"]')?.addEventListener(
           "click",
           async () => {
@@ -1344,9 +1238,9 @@ function renderAppointmentsTable() {
         : a.date.localeCompare(b.date),
     )
     .forEach((a) => {
-      const doctor = doctors.find((d) => Number(d.id) === Number(a.doctorId));
+      const doctor = doctors.find((d) => String(d.id) === String(a.doctorId));
       const service = services.find(
-        (s) => Number(s.id) === Number(a.serviceId),
+        (s) => String(s.id) === String(a.serviceId),
       );
       const tr = document.createElement("tr");
 
@@ -1374,13 +1268,10 @@ function renderAppointmentsTable() {
         </td>
       `;
 
-      tr.querySelector('[data-action="edit"]')?.addEventListener(
-        "click",
-        (e) => {
-          e.stopPropagation();
-          openEditApptModal(a.id);
-        },
-      );
+      tr.querySelector('[data-action="edit"]')?.addEventListener("click", (e) => {
+        e.stopPropagation();
+        openEditApptModal(a.id);
+      });
 
       tr.querySelector('[data-action="delete"]')?.addEventListener(
         "click",
@@ -1424,14 +1315,10 @@ function renderAppointmentsTable() {
   renderDoctorLoadForRange();
 }
 
-if (rangeFromInput)
-  rangeFromInput.addEventListener("change", renderAppointmentsTable);
-if (rangeToInput)
-  rangeToInput.addEventListener("change", renderAppointmentsTable);
-if (rangeDoctorSelect)
-  rangeDoctorSelect.addEventListener("change", renderAppointmentsTable);
-if (rangeSearchInput)
-  rangeSearchInput.addEventListener("input", renderAppointmentsTable);
+if (rangeFromInput) rangeFromInput.addEventListener("change", renderAppointmentsTable);
+if (rangeToInput) rangeToInput.addEventListener("change", renderAppointmentsTable);
+if (rangeDoctorSelect) rangeDoctorSelect.addEventListener("change", renderAppointmentsTable);
+if (rangeSearchInput) rangeSearchInput.addEventListener("input", renderAppointmentsTable);
 
 // CSV экспорт (остаётся фронтовым)
 function exportRangeCsv() {
@@ -1466,9 +1353,9 @@ function exportRangeCsv() {
         : a.date.localeCompare(b.date),
     )
     .forEach((a) => {
-      const doctor = doctors.find((d) => Number(d.id) === Number(a.doctorId));
+      const doctor = doctors.find((d) => String(d.id) === String(a.doctorId));
       const service = services.find(
-        (s) => Number(s.id) === Number(a.serviceId),
+        (s) => String(s.id) === String(a.serviceId),
       );
       rows.push([
         a.date,
@@ -1514,13 +1401,12 @@ function exportRangeCsv() {
 
   showToast("CSV-файл выгружен", "success");
 }
-if (exportRangeCsvBtn)
-  exportRangeCsvBtn.addEventListener("click", exportRangeCsv);
+if (exportRangeCsvBtn) exportRangeCsvBtn.addEventListener("click", exportRangeCsv);
 
 // ===== РЕДАКТИРОВАНИЕ ЗАПИСИ =====
 function openEditApptModal(id) {
   const all = getAppointments();
-  const appt = all.find((a) => Number(a.id) === Number(id));
+  const appt = all.find((a) => String(a.id) === String(id));
   if (!appt) return;
 
   currentEditApptId = appt.id;
@@ -1528,10 +1414,10 @@ function openEditApptModal(id) {
 
   editApptDateInput.value = appt.date;
   editApptTimeInput.value = appt.time;
-  editApptDoctorSelect.value = String(appt.doctorId);
+  editApptDoctorSelect.value = String(appt.doctorId || "");
   editApptPatientInput.value = appt.patientName;
   editApptPhoneInput.value = appt.phone || "";
-  editApptServiceSelect.value = String(appt.serviceId);
+  editApptServiceSelect.value = String(appt.serviceId || "");
   editApptPriceInput.value = appt.price || 0;
   editApptStatusVisitSelect.value = appt.statusVisit || "scheduled";
   editApptStatusPaymentSelect.value = appt.statusPayment || "unpaid";
@@ -1549,15 +1435,13 @@ async function deleteAppointment(id) {
   if (!confirm("Удалить эту запись?")) return;
 
   try {
-    if (API_BASE) {
-      await api.deleteAppointment(id);
-    }
+    await api.deleteAppointment(id);
 
     const all = getAppointments();
-    setAppointments(all.filter((a) => Number(a.id) !== Number(id)));
+    setAppointments(all.filter((a) => String(a.id) !== String(id)));
 
     showToast("Запись удалена", "info");
-    if (Number(currentEditApptId) === Number(id)) closeEditApptModal();
+    if (String(currentEditApptId) === String(id)) closeEditApptModal();
     renderAll();
   } catch (e) {
     console.error(e);
@@ -1571,31 +1455,23 @@ if (editApptForm) {
     if (!currentEditApptId) return;
 
     const all = getAppointments();
-    const idx = all.findIndex(
-      (a) => Number(a.id) === Number(currentEditApptId),
-    );
+    const idx = all.findIndex((a) => String(a.id) === String(currentEditApptId));
     if (idx === -1) return;
 
     const updated = { ...all[idx] };
 
-    updated.date = editApptDateInput.value;
-    updated.time = editApptTimeInput.value;
-    updated.doctorId = Number(editApptDoctorSelect.value);
+    updated.date = (editApptDateInput.value || "").trim();
+    updated.time = (editApptTimeInput.value || "").trim();
+    updated.doctorId = String(editApptDoctorSelect.value || "").trim(); // UUID строка
     updated.patientName = normalizeName(editApptPatientInput.value);
     updated.phone = normalizePhone(editApptPhoneInput.value);
-    updated.serviceId = Number(editApptServiceSelect.value);
+    updated.serviceId = String(editApptServiceSelect.value || "").trim();
     updated.price = toNumber(editApptPriceInput.value || 0);
     updated.statusVisit = editApptStatusVisitSelect.value;
     updated.statusPayment = editApptStatusPaymentSelect.value;
     updated.paymentMethod = editApptPaymentMethodSelect.value;
 
-    if (
-      !updated.date ||
-      !updated.time ||
-      !updated.doctorId ||
-      !updated.patientName ||
-      !updated.serviceId
-    ) {
+    if (!updated.date || !updated.time || !updated.doctorId || !updated.patientName || !updated.serviceId) {
       showToast("Заполните все обязательные поля", "error");
       return;
     }
@@ -1612,7 +1488,6 @@ if (editApptForm) {
     }
 
     try {
-      // ВАЖНО: для API обновления используем setApptPatch (он сам сделает snake_case)
       const patch = {
         date: updated.date,
         time: updated.time,
@@ -1626,20 +1501,8 @@ if (editApptForm) {
         paymentMethod: updated.paymentMethod,
       };
 
-      if (API_BASE) {
-        const ok = await setApptPatch(currentEditApptId, patch);
-        if (!ok) return;
-
-        // setApptPatch уже обновил state, просто закрываем
-        showToast("Запись обновлена", "success");
-        closeEditApptModal();
-        renderAll();
-        return;
-      }
-
-      // DEMO/local
-      all[idx] = updated;
-      setAppointments(all);
+      const ok = await setApptPatch(currentEditApptId, patch);
+      if (!ok) return;
 
       showToast("Запись обновлена", "success");
       closeEditApptModal();
@@ -1651,8 +1514,7 @@ if (editApptForm) {
   });
 }
 
-if (editApptCancelBtn)
-  editApptCancelBtn.addEventListener("click", closeEditApptModal);
+if (editApptCancelBtn) editApptCancelBtn.addEventListener("click", closeEditApptModal);
 
 if (editApptModalBackdrop) {
   editApptModalBackdrop.addEventListener("click", (e) => {
@@ -1705,17 +1567,9 @@ function serviceFromApi(s, fallback = {}) {
 
 // ===== ВРАЧИ (CRUD) =====
 function renderDoctors() {
-  if (!doctorsTableBody) return;
-  const doctors = getDoctors();
-
-  doctorSelect.innerHTML = `<option value="">Выберите врача</option>`;
-
-  doctors.forEach((d) => {
-    const opt = document.createElement("option");
-    opt.value = d.id; // UUID строка
-    opt.textContent = d.name;
-    doctorSelect.appendChild(opt);
-  });
+  // таблица врачей рендерится в другом месте (если у тебя есть полноценный renderDoctors ниже — оставь его)
+  // здесь ничего не ломаем. Селекты врачей обновляются через refreshSelectsOnly()
+  refreshSelectsOnly();
 }
 
 function openDoctorModal(id = null) {
@@ -1723,7 +1577,7 @@ function openDoctorModal(id = null) {
   currentDoctorId = id;
 
   if (id) {
-    const doc = doctors.find((d) => Number(d.id) === Number(id));
+    const doc = doctors.find((d) => String(d.id) === String(id));
     if (!doc) return;
 
     doctorModalTitle.textContent = "Редактирование врача";
@@ -1748,15 +1602,12 @@ function closeDoctorModal() {
 }
 
 async function deleteDoctor(id) {
-  if (
-    !confirm("Удалить этого врача? Записи останутся, но без привязки к врачу.")
-  )
-    return;
+  if (!confirm("Удалить этого врача? Записи останутся, но без привязки к врачу.")) return;
 
   try {
-    if (API_BASE) await api.deleteDoctor(id);
+    await api.deleteDoctor(id);
 
-    setDoctors(getDoctors().filter((d) => Number(d.id) !== Number(id)));
+    setDoctors(getDoctors().filter((d) => String(d.id) !== String(id)));
     refreshSelectsOnly();
     renderAll();
     showToast("Врач удалён", "info");
@@ -1766,10 +1617,9 @@ async function deleteDoctor(id) {
   }
 }
 
-if (addDoctorBtn)
-  addDoctorBtn.addEventListener("click", () => openDoctorModal(null));
-if (doctorCancelBtn)
-  doctorCancelBtn.addEventListener("click", closeDoctorModal);
+if (addDoctorBtn) addDoctorBtn.addEventListener("click", () => openDoctorModal(null));
+if (doctorCancelBtn) doctorCancelBtn.addEventListener("click", closeDoctorModal);
+
 if (doctorModalBackdrop) {
   doctorModalBackdrop.addEventListener("click", (e) => {
     if (e.target === doctorModalBackdrop) closeDoctorModal();
@@ -1782,10 +1632,7 @@ if (doctorForm) {
 
     const name = normalizeName(doctorNameInput.value);
     const speciality = normalizeName(doctorSpecialityInput.value);
-    const percent = Math.min(
-      100,
-      Math.max(0, toNumber(doctorPercentInput.value || 0)),
-    );
+    const percent = Math.min(100, Math.max(0, toNumber(doctorPercentInput.value || 0)));
     const active = doctorActiveSelect.value === "true";
 
     if (!name) {
@@ -1799,37 +1646,28 @@ if (doctorForm) {
 
       if (currentDoctorId) {
         // update
-        let updatedApi = null;
-        if (API_BASE)
-          updatedApi = await api.updateDoctor(currentDoctorId, payloadApi);
+        const updatedApi = await api.updateDoctor(currentDoctorId, payloadApi);
 
         const doctors = getDoctors().slice();
-        const idx = doctors.findIndex(
-          (d) => Number(d.id) === Number(currentDoctorId),
-        );
+        const idx = doctors.findIndex((d) => String(d.id) === String(currentDoctorId));
         if (idx !== -1) {
           const fallback = { ...doctors[idx], ...payload };
-          doctors[idx] = updatedApi
-            ? doctorFromApi(updatedApi, fallback)
-            : fallback;
+          doctors[idx] = updatedApi ? doctorFromApi(updatedApi, fallback) : fallback;
         }
         setDoctors(doctors);
 
         showToast("Врач обновлён", "success");
       } else {
         // create
-        let createdApi = null;
-        if (API_BASE) createdApi = await api.createDoctor(payloadApi);
+        const createdApi = await api.createDoctor(payloadApi);
 
         const doctors = getDoctors().slice();
         const fallback = {
-          id: Date.now(),
+          id: String(Date.now()),
           ...payload,
           createdAt: new Date().toISOString(),
         };
-        doctors.push(
-          createdApi ? doctorFromApi(createdApi, fallback) : fallback,
-        );
+        doctors.push(createdApi ? doctorFromApi(createdApi, fallback) : fallback);
         setDoctors(doctors);
 
         showToast("Врач добавлен", "success");
@@ -1853,7 +1691,7 @@ function renderServices() {
   servicesTableBody.innerHTML = "";
   services
     .slice()
-    .sort((a, b) => a.name.localeCompare(b.name, "ru"))
+    .sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "ru"))
     .forEach((s) => {
       const tr = document.createElement("tr");
       tr.innerHTML = `
@@ -1867,15 +1705,10 @@ function renderServices() {
         </td>
       `;
 
-      tr.querySelector('[data-action="edit"]')?.addEventListener("click", () =>
-        openServiceModal(s.id),
-      );
-      tr.querySelector('[data-action="delete"]')?.addEventListener(
-        "click",
-        async () => {
-          await deleteService(s.id);
-        },
-      );
+      tr.querySelector('[data-action="edit"]')?.addEventListener("click", () => openServiceModal(s.id));
+      tr.querySelector('[data-action="delete"]')?.addEventListener("click", async () => {
+        await deleteService(s.id);
+      });
 
       servicesTableBody.appendChild(tr);
     });
@@ -1885,8 +1718,8 @@ function openServiceModal(id = null) {
   const services = getServices();
   currentServiceId = id;
 
-  if (id) {
-    const srv = services.find((s) => Number(s.id) === Number(id));
+  if (id != null) {
+    const srv = services.find((s) => String(s.id) === String(id));
     if (!srv) return;
 
     serviceModalTitle.textContent = "Редактирование услуги";
@@ -1911,17 +1744,12 @@ function closeServiceModal() {
 }
 
 async function deleteService(id) {
-  if (
-    !confirm(
-      "Удалить эту услугу? Записи останутся, но будут без привязанной услуги.",
-    )
-  )
-    return;
+  if (!confirm("Удалить эту услугу? Записи останутся, но будут без привязанной услуги.")) return;
 
   try {
-    if (API_BASE) await api.deleteService(id);
+    await api.deleteService(id);
 
-    setServices(getServices().filter((s) => Number(s.id) !== Number(id)));
+    setServices(getServices().filter((s) => String(s.id) !== String(id)));
     refreshSelectsOnly();
     renderAll();
     showToast("Услуга удалена", "info");
@@ -1931,10 +1759,9 @@ async function deleteService(id) {
   }
 }
 
-if (addServiceBtn)
-  addServiceBtn.addEventListener("click", () => openServiceModal(null));
-if (serviceCancelBtn)
-  serviceCancelBtn.addEventListener("click", closeServiceModal);
+if (addServiceBtn) addServiceBtn.addEventListener("click", () => openServiceModal(null));
+if (serviceCancelBtn) serviceCancelBtn.addEventListener("click", closeServiceModal);
+
 if (serviceModalBackdrop) {
   serviceModalBackdrop.addEventListener("click", (e) => {
     if (e.target === serviceModalBackdrop) closeServiceModal();
@@ -1960,38 +1787,27 @@ if (serviceForm) {
       const payloadApi = serviceToApiPayload(payload);
 
       if (currentServiceId) {
-        // update
-        let updatedApi = null;
-        if (API_BASE)
-          updatedApi = await api.updateService(currentServiceId, payloadApi);
+        const updatedApi = await api.updateService(currentServiceId, payloadApi);
 
         const services = getServices().slice();
-        const idx = services.findIndex(
-          (s) => Number(s.id) === Number(currentServiceId),
-        );
+        const idx = services.findIndex((s) => String(s.id) === String(currentServiceId));
         if (idx !== -1) {
           const fallback = { ...services[idx], ...payload };
-          services[idx] = updatedApi
-            ? serviceFromApi(updatedApi, fallback)
-            : fallback;
+          services[idx] = updatedApi ? serviceFromApi(updatedApi, fallback) : fallback;
         }
         setServices(services);
 
         showToast("Услуга обновлена", "success");
       } else {
-        // create
-        let createdApi = null;
-        if (API_BASE) createdApi = await api.createService(payloadApi);
+        const createdApi = await api.createService(payloadApi);
 
         const services = getServices().slice();
         const fallback = {
-          id: Date.now(),
+          id: String(Date.now()),
           ...payload,
           createdAt: new Date().toISOString(),
         };
-        services.push(
-          createdApi ? serviceFromApi(createdApi, fallback) : fallback,
-        );
+        services.push(createdApi ? serviceFromApi(createdApi, fallback) : fallback);
         setServices(services);
 
         showToast("Услуга добавлена", "success");
@@ -2006,18 +1822,15 @@ if (serviceForm) {
     }
   });
 }
-// ===== ПАЦИЕНТЫ: summary + risk + archive/delete (API-ready) =====
 
-// ВАЖНО: мы уже используем state.archivedPatients как источник истины (см. выше в app.js),
-// поэтому тут НЕ используем loadJSON/saveJSON, чтобы не было “undefined”.
+// ===== ПАЦИЕНТЫ: summary + risk + archive/delete (API-ready) =====
 function getArchivedSet() {
-  if (state && state.archivedPatients instanceof Set)
-    return state.archivedPatients;
+  if (state && state.archivedPatients instanceof Set) return state.archivedPatients;
   return new Set();
 }
 function persistArchivedSet(set) {
   state.archivedPatients = set;
-  saveArchivedPatientsSetLocal(set); // используем твои функции local fallback
+  saveArchivedPatientsSetLocal(set);
 }
 function archivePatientKeyUnified(patientKey) {
   const set = getArchivedSet();
@@ -2044,9 +1857,7 @@ function computePatientRisk(patientAppts) {
   if (!total) return { level: "low", label: "Low", score: 0 };
 
   const noShow = patientAppts.filter((a) => a.statusVisit === "no_show").length;
-  const unpaid = patientAppts.filter(
-    (a) => a.statusPayment === "unpaid",
-  ).length;
+  const unpaid = patientAppts.filter((a) => a.statusPayment === "unpaid").length;
 
   const noShowRate = noShow / Math.max(1, total);
   const unpaidRate = unpaid / Math.max(1, total);
@@ -2058,27 +1869,22 @@ function computePatientRisk(patientAppts) {
   const last = patientAppts
     .slice()
     .sort((a, b) =>
-      a.date === b.date
-        ? a.time.localeCompare(b.time)
-        : a.date.localeCompare(b.date),
+      a.date === b.date ? a.time.localeCompare(b.time) : a.date.localeCompare(b.date),
     )
     .pop();
 
   if (last) {
     const todayISO = formatDateISO(new Date());
     const days = Math.floor(
-      (new Date(todayISO).getTime() - new Date(last.date).getTime()) /
-        (1000 * 60 * 60 * 24),
+      (new Date(todayISO).getTime() - new Date(last.date).getTime()) / (1000 * 60 * 60 * 24),
     );
     if (days > 120) score *= 0.7;
   }
 
   score = Math.max(0, Math.min(100, score));
 
-  if (score >= 55)
-    return { level: "high", label: "High", score: Math.round(score) };
-  if (score >= 25)
-    return { level: "med", label: "Med", score: Math.round(score) };
+  if (score >= 55) return { level: "high", label: "High", score: Math.round(score) };
+  if (score >= 25) return { level: "med", label: "Med", score: Math.round(score) };
   return { level: "low", label: "Low", score: Math.round(score) };
 }
 
@@ -2109,7 +1915,6 @@ function buildPatientsSummary() {
     if (isRevenueAppt(a)) item.revenue += a.price || 0;
   });
 
-  // риск — по всей истории
   for (const p of map.values()) {
     const patientAppts = appts.filter((a) => patientKeyFromAppt(a) === p.key);
     p.risk = computePatientRisk(patientAppts);
@@ -2137,7 +1942,7 @@ function renderPatients() {
   patientsTableBody.innerHTML = "";
   filtered
     .slice()
-    .sort((a, b) => a.name.localeCompare(b.name, "ru"))
+    .sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "ru"))
     .forEach((p) => {
       const tr = document.createElement("tr");
 
@@ -2161,29 +1966,20 @@ function renderPatients() {
 
       tr.addEventListener("click", () => openPatientModal(p.key));
 
-      tr.querySelector('[data-action="archive"]')?.addEventListener(
-        "click",
-        (e) => {
-          e.stopPropagation();
-          archivePatientByKey(p.key);
-        },
-      );
+      tr.querySelector('[data-action="archive"]')?.addEventListener("click", (e) => {
+        e.stopPropagation();
+        archivePatientByKey(p.key);
+      });
 
-      tr.querySelector('[data-action="restore"]')?.addEventListener(
-        "click",
-        (e) => {
-          e.stopPropagation();
-          restorePatientByKey(p.key);
-        },
-      );
+      tr.querySelector('[data-action="restore"]')?.addEventListener("click", (e) => {
+        e.stopPropagation();
+        restorePatientByKey(p.key);
+      });
 
-      tr.querySelector('[data-action="delete"]')?.addEventListener(
-        "click",
-        async (e) => {
-          e.stopPropagation();
-          await deletePatientByKey(p.key);
-        },
-      );
+      tr.querySelector('[data-action="delete"]')?.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        await deletePatientByKey(p.key);
+      });
 
       patientsTableBody.appendChild(tr);
     });
@@ -2193,29 +1989,20 @@ async function deletePatientByKey(patientKey) {
   const list = buildPatientsSummary();
   const target = list.find((x) => x.key === patientKey);
 
-  const label = target
-    ? `${target.name}${target.phone ? " — " + target.phone : ""}`
-    : "этого пациента";
-
-  if (!confirm(`Удалить пациента: ${label}?\nБудут удалены все его записи.`))
-    return;
+  const label = target ? `${target.name}${target.phone ? " — " + target.phone : ""}` : "этого пациента";
+  if (!confirm(`Удалить пациента: ${label}?\nБудут удалены все его записи.`)) return;
 
   const before = getAppointments();
-  const patientAppts = before.filter(
-    (a) => patientKeyFromAppt(a) === patientKey,
-  );
+  const patientAppts = before.filter((a) => patientKeyFromAppt(a) === patientKey);
 
   try {
-    // 1) сервер: удаляем все записи пациента
-    if (API_BASE && patientAppts.length) {
+    if (patientAppts.length) {
       await Promise.all(patientAppts.map((a) => api.deleteAppointment(a.id)));
     }
 
-    // 2) локально: удаляем записи из state
     const after = before.filter((a) => patientKeyFromAppt(a) !== patientKey);
     setAppointments(after);
 
-    // 3) убираем из архива тоже
     restorePatientKeyUnified(patientKey);
 
     if (currentPatientKey === patientKey) closePatientModal();
@@ -2232,16 +2019,9 @@ function archivePatientByKey(patientKey) {
   const list = buildPatientsSummary();
   const target = list.find((x) => x.key === patientKey);
 
-  const label = target
-    ? `${target.name}${target.phone ? " — " + target.phone : ""}`
-    : "этого пациента";
+  const label = target ? `${target.name}${target.phone ? " — " + target.phone : ""}` : "этого пациента";
 
-  if (
-    !confirm(
-      `Архивировать пациента: ${label}?\nЗаписи останутся, пациент будет скрыт из списка.`,
-    )
-  )
-    return;
+  if (!confirm(`Архивировать пациента: ${label}?\nЗаписи останутся, пациент будет скрыт из списка.`)) return;
 
   archivePatientKeyUnified(patientKey);
 
@@ -2262,19 +2042,13 @@ function openPatientModal(patientKey) {
 
   const list = buildPatientsSummary();
   const target = list.find((x) => x.key === patientKey);
-  const title = target
-    ? `${target.name}${target.phone ? " — " + target.phone : ""}`
-    : "История пациента";
+  const title = target ? `${target.name}${target.phone ? " — " + target.phone : ""}` : "История пациента";
   if (patientModalTitle) patientModalTitle.textContent = title;
 
-  const appts = getAppointments().filter(
-    (a) => patientKeyFromAppt(a) === patientKey,
-  );
+  const appts = getAppointments().filter((a) => patientKeyFromAppt(a) === patientKey);
 
   appts.sort((a, b) =>
-    a.date === b.date
-      ? a.time.localeCompare(b.time)
-      : a.date.localeCompare(b.date),
+    a.date === b.date ? a.time.localeCompare(b.time) : a.date.localeCompare(b.date),
   );
 
   if (!patientHistoryBody) return;
@@ -2290,10 +2064,8 @@ function openPatientModal(patientKey) {
       const div = document.createElement("div");
       div.className = "patient-history-item";
 
-      const doctor = doctors.find((d) => Number(d.id) === Number(a.doctorId));
-      const service = services.find(
-        (s) => Number(s.id) === Number(a.serviceId),
-      );
+      const doctor = doctors.find((d) => String(d.id) === String(a.doctorId));
+      const service = services.find((s) => String(s.id) === String(a.serviceId));
 
       div.innerHTML = `
         <span><strong>${a.date}</strong> ${a.time}</span>
@@ -2316,12 +2088,10 @@ function closePatientModal() {
   patientModalBackdrop?.classList.add("hidden");
 }
 
-if (patientsSearchInput)
-  patientsSearchInput.addEventListener("input", renderPatients);
-if (patientsArchiveMode)
-  patientsArchiveMode.addEventListener("change", renderPatients);
-if (patientModalClose)
-  patientModalClose.addEventListener("click", closePatientModal);
+if (patientsSearchInput) patientsSearchInput.addEventListener("input", renderPatients);
+if (patientsArchiveMode) patientsArchiveMode.addEventListener("change", renderPatients);
+if (patientModalClose) patientModalClose.addEventListener("click", closePatientModal);
+
 if (patientModalBackdrop) {
   patientModalBackdrop.addEventListener("click", (e) => {
     if (e.target === patientModalBackdrop) closePatientModal();
@@ -2339,9 +2109,10 @@ function renderReportsDay() {
   const forDay = all.filter((a) => a.date === dateISO && isRevenueAppt(a));
 
   const totals = new Map();
-  forDay.forEach((a) =>
-    totals.set(a.doctorId, (totals.get(a.doctorId) || 0) + (a.price || 0)),
-  );
+  forDay.forEach((a) => {
+    const did = String(a.doctorId || "");
+    totals.set(did, (totals.get(did) || 0) + (a.price || 0));
+  });
 
   if (reportDoctorTotals) {
     reportDoctorTotals.innerHTML = "";
@@ -2353,7 +2124,7 @@ function renderReportsDay() {
       Array.from(totals.entries())
         .sort((a, b) => b[1] - a[1])
         .forEach(([doctorId, sum]) => {
-          const doctor = doctors.find((d) => Number(d.id) === Number(doctorId));
+          const doctor = doctors.find((d) => String(d.id) === String(doctorId));
           const li = document.createElement("li");
           li.textContent = `${doctor ? doctor.name : "Врач"} — ${moneyUZS(sum)}`;
           reportDoctorTotals.appendChild(li);
@@ -2366,8 +2137,7 @@ function renderReportsDay() {
     reportClinicTotal.textContent = moneyUZS(clinicTotal);
   }
 }
-if (reportDateInput)
-  reportDateInput.addEventListener("change", renderReportsDay);
+if (reportDateInput) reportDateInput.addEventListener("change", renderReportsDay);
 
 // ===== ОТЧЁТЫ: МЕСЯЦ И ГОД =====
 function renderReportsMonthYear() {
@@ -2378,16 +2148,14 @@ function renderReportsMonthYear() {
   const yearValue = reportYearInput?.value || "";
 
   const monthAppts = monthValue
-    ? all.filter((a) => a.date.startsWith(monthValue) && isRevenueAppt(a))
+    ? all.filter((a) => String(a.date || "").startsWith(monthValue) && isRevenueAppt(a))
     : [];
 
   const monthTotals = new Map();
-  monthAppts.forEach((a) =>
-    monthTotals.set(
-      a.doctorId,
-      (monthTotals.get(a.doctorId) || 0) + (a.price || 0),
-    ),
-  );
+  monthAppts.forEach((a) => {
+    const did = String(a.doctorId || "");
+    monthTotals.set(did, (monthTotals.get(did) || 0) + (a.price || 0));
+  });
 
   if (reportMonthDoctorTotals) {
     reportMonthDoctorTotals.innerHTML = "";
@@ -2399,7 +2167,7 @@ function renderReportsMonthYear() {
       Array.from(monthTotals.entries())
         .sort((a, b) => b[1] - a[1])
         .forEach(([doctorId, sum]) => {
-          const doctor = doctors.find((d) => Number(d.id) === Number(doctorId));
+          const doctor = doctors.find((d) => String(d.id) === String(doctorId));
           const li = document.createElement("li");
           li.textContent = `${doctor ? doctor.name : "Врач"} — ${moneyUZS(sum)}`;
           reportMonthDoctorTotals.appendChild(li);
@@ -2412,18 +2180,14 @@ function renderReportsMonthYear() {
   }
 
   const yearAppts = yearValue
-    ? all.filter(
-        (a) => a.date.slice(0, 4) === String(yearValue) && isRevenueAppt(a),
-      )
+    ? all.filter((a) => String(a.date || "").slice(0, 4) === String(yearValue) && isRevenueAppt(a))
     : [];
 
   const yearTotals = new Map();
-  yearAppts.forEach((a) =>
-    yearTotals.set(
-      a.doctorId,
-      (yearTotals.get(a.doctorId) || 0) + (a.price || 0),
-    ),
-  );
+  yearAppts.forEach((a) => {
+    const did = String(a.doctorId || "");
+    yearTotals.set(did, (yearTotals.get(did) || 0) + (a.price || 0));
+  });
 
   if (reportYearDoctorTotals) {
     reportYearDoctorTotals.innerHTML = "";
@@ -2435,7 +2199,7 @@ function renderReportsMonthYear() {
       Array.from(yearTotals.entries())
         .sort((a, b) => b[1] - a[1])
         .forEach(([doctorId, sum]) => {
-          const doctor = doctors.find((d) => Number(d.id) === Number(doctorId));
+          const doctor = doctors.find((d) => String(d.id) === String(doctorId));
           const li = document.createElement("li");
           li.textContent = `${doctor ? doctor.name : "Врач"} — ${moneyUZS(sum)}`;
           reportYearDoctorTotals.appendChild(li);
@@ -2447,10 +2211,8 @@ function renderReportsMonthYear() {
     reportYearClinicTotal.textContent = moneyUZS(clinicTotal);
   }
 }
-if (reportMonthInput)
-  reportMonthInput.addEventListener("change", renderReportsMonthYear);
-if (reportYearInput)
-  reportYearInput.addEventListener("change", renderReportsMonthYear);
+if (reportMonthInput) reportMonthInput.addEventListener("change", renderReportsMonthYear);
+if (reportYearInput) reportYearInput.addEventListener("change", renderReportsMonthYear);
 
 // ===== ESC закрывает модалки =====
 function closeAnyModalOnEsc(e) {
@@ -2472,6 +2234,7 @@ function closeAnyModalOnEsc(e) {
 }
 document.addEventListener("keydown", closeAnyModalOnEsc);
 
+// безопасное сохранение архива (если вдруг у тебя выше функции нет/переопределена)
 function saveArchivedPatientsSetLocal(set) {
   try {
     localStorage.setItem(

@@ -1,5 +1,7 @@
 import express from "express";
 import dotenv from "dotenv";
+import path from "path";
+import { fileURLToPath } from "url";
 import pkg from "pg";
 import cors from "cors";
 
@@ -9,42 +11,46 @@ const { Pool } = pkg;
 const app = express();
 
 /* =========================
-   CONFIG
+   BASIC MIDDLEWARE
 ========================= */
-const PORT = process.env.PORT || 3000;
+app.use(express.json());
 
-// Можно ограничить CORS через env:
-// CORS_ORIGINS=https://samandar90.github.io,https://kamilovs-crm.onrender.com
-const ALLOWED_ORIGINS = (process.env.CORS_ORIGINS || "")
-  .split(",")
-  .map((s) => s.trim())
-  .filter(Boolean);
-
-/* =========================
-   MIDDLEWARE
-========================= */
-app.use(express.json({ limit: "1mb" }));
+const ALLOWED_ORIGINS = [
+  "https://samandar90.github.io",
+  "https://samandar90.github.io/Kamilovs-CRM",
+  "http://localhost:5173",
+  "http://localhost:3000",
+];
 
 app.use(
   cors({
     origin: (origin, cb) => {
-      // запросы без origin (Postman/curl) — разрешаем
-      if (!origin) return cb(null, true);
-
-      // если список не задан — разрешаем всем (как раньше)
-      if (ALLOWED_ORIGINS.length === 0) return cb(null, true);
-
-      return cb(null, ALLOWED_ORIGINS.includes(origin));
+      if (!origin) return cb(null, true); // Postman/curl
+      if (ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
+      return cb(null, true); // можно ужесточить позже
     },
     credentials: false,
   })
 );
 
 /* =========================
-   DATABASE
+   PATHS
+========================= */
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+/* =========================
+   CONFIG
+========================= */
+const PORT = process.env.PORT || 3000;
+const PUBLIC_DIR = process.env.PUBLIC_DIR || "../public";
+
+/* =========================
+   DATABASE (PostgreSQL)
 ========================= */
 if (!process.env.DATABASE_URL) {
-  console.warn("⚠️ DATABASE_URL is not set. Render DB must be connected.");
+  console.error("FATAL: DATABASE_URL is missing in env.");
+  process.exit(1);
 }
 
 const pool = new Pool({
@@ -52,332 +58,336 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false },
 });
 
-function asyncHandler(fn) {
-  return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+/* =========================
+   DB HELPERS / MIGRATIONS
+========================= */
+async function ensureColumn(table, col, typeSql) {
+  // typeSql example: "TEXT", "BIGINT NOT NULL DEFAULT 0"
+  await pool.query(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS ${col} ${typeSql};`);
 }
 
-/* =========================
-   DB INIT + MIGRATIONS
-========================= */
 async function initDb() {
-  // 1) doctors
+  // 1) Create базовые таблицы (если вообще нет)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS doctors (
-      id BIGSERIAL PRIMARY KEY,
-      name TEXT NOT NULL,
-      speciality TEXT DEFAULT '',
-      percent INT NOT NULL DEFAULT 0,
-      active BOOLEAN NOT NULL DEFAULT true,
-      telegram_chat_id TEXT DEFAULT '',
-      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      id BIGSERIAL PRIMARY KEY
     );
   `);
 
-  // 2) services
   await pool.query(`
     CREATE TABLE IF NOT EXISTS services (
-      id BIGSERIAL PRIMARY KEY,
-      name TEXT NOT NULL,
-      category TEXT DEFAULT '',
-      price BIGINT NOT NULL DEFAULT 0,
-      active BOOLEAN NOT NULL DEFAULT true,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      id BIGSERIAL PRIMARY KEY
     );
   `);
 
-  // 3) appointments (создаст только если таблицы ещё нет)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS appointments (
-      id BIGSERIAL PRIMARY KEY,
-      date TEXT NOT NULL,          -- YYYY-MM-DD
-      time TEXT NOT NULL,          -- HH:MM
-      doctor_id BIGINT REFERENCES doctors(id) ON DELETE SET NULL,
-      patient_name TEXT NOT NULL,
-      phone TEXT DEFAULT '',
-      service_id BIGINT REFERENCES services(id) ON DELETE SET NULL,
-      price BIGINT NOT NULL DEFAULT 0,
-      status_visit TEXT NOT NULL DEFAULT 'scheduled',
-      status_payment TEXT NOT NULL DEFAULT 'unpaid',
-      payment_method TEXT NOT NULL DEFAULT 'none',
-      note TEXT DEFAULT '',
-      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      id BIGSERIAL PRIMARY KEY
     );
   `);
 
-  // 4) MIGRATIONS для старой таблицы appointments (если она уже была создана иначе)
-  // Эти запросы НЕ ломают, если колонки уже есть.
-  await pool.query(`ALTER TABLE appointments ADD COLUMN IF NOT EXISTS date TEXT;`);
-  await pool.query(`ALTER TABLE appointments ADD COLUMN IF NOT EXISTS time TEXT;`);
-  await pool.query(`ALTER TABLE appointments ADD COLUMN IF NOT EXISTS doctor_id BIGINT;`);
-  await pool.query(`ALTER TABLE appointments ADD COLUMN IF NOT EXISTS patient_name TEXT;`);
-  await pool.query(`ALTER TABLE appointments ADD COLUMN IF NOT EXISTS phone TEXT DEFAULT '';`);
-  await pool.query(`ALTER TABLE appointments ADD COLUMN IF NOT EXISTS service_id BIGINT;`);
-  await pool.query(`ALTER TABLE appointments ADD COLUMN IF NOT EXISTS price BIGINT NOT NULL DEFAULT 0;`);
-  await pool.query(`ALTER TABLE appointments ADD COLUMN IF NOT EXISTS status_visit TEXT NOT NULL DEFAULT 'scheduled';`);
-  await pool.query(`ALTER TABLE appointments ADD COLUMN IF NOT EXISTS status_payment TEXT NOT NULL DEFAULT 'unpaid';`);
-  await pool.query(`ALTER TABLE appointments ADD COLUMN IF NOT EXISTS payment_method TEXT NOT NULL DEFAULT 'none';`);
-  await pool.query(`ALTER TABLE appointments ADD COLUMN IF NOT EXISTS note TEXT DEFAULT '';`);
-  await pool.query(`ALTER TABLE appointments ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now();`);
-  await pool.query(`ALTER TABLE appointments ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now();`);
+  // 2) Миграции: doctors
+  await ensureColumn("doctors", "name", "TEXT");
+  await ensureColumn("doctors", "speciality", "TEXT DEFAULT ''");
+  await ensureColumn("doctors", "percent", "INT NOT NULL DEFAULT 0");
+  await ensureColumn("doctors", "active", "BOOLEAN NOT NULL DEFAULT true");
+  await ensureColumn("doctors", "created_at", "TIMESTAMPTZ NOT NULL DEFAULT now()");
+  await ensureColumn("doctors", "updated_at", "TIMESTAMPTZ");
 
-  // 5) индексы (после того как колонки гарантированно существуют)
-  await pool.query(`
-    CREATE INDEX IF NOT EXISTS idx_appointments_date_time
-    ON appointments (date, time);
-  `);
+  // Сделаем name NOT NULL безопасно
+  await pool.query(`UPDATE doctors SET name = '' WHERE name IS NULL;`);
+  await pool.query(`ALTER TABLE doctors ALTER COLUMN name SET NOT NULL;`);
+
+  // 3) Миграции: services
+  await ensureColumn("services", "name", "TEXT");
+  await ensureColumn("services", "category", "TEXT DEFAULT ''");
+  await ensureColumn("services", "price", "BIGINT NOT NULL DEFAULT 0");
+  await ensureColumn("services", "active", "BOOLEAN NOT NULL DEFAULT true");
+  await ensureColumn("services", "created_at", "TIMESTAMPTZ NOT NULL DEFAULT now()");
+  await ensureColumn("services", "updated_at", "TIMESTAMPTZ");
+
+  await pool.query(`UPDATE services SET name = '' WHERE name IS NULL;`);
+  await pool.query(`ALTER TABLE services ALTER COLUMN name SET NOT NULL;`);
+
+  // 4) Миграции: appointments
+  await ensureColumn("appointments", "date", "TEXT"); // YYYY-MM-DD
+  await ensureColumn("appointments", "time", "TEXT"); // HH:MM
+  await ensureColumn("appointments", "doctor_id", "BIGINT");
+  await ensureColumn("appointments", "patient_name", "TEXT");
+  await ensureColumn("appointments", "phone", "TEXT DEFAULT ''");
+  await ensureColumn("appointments", "service_id", "BIGINT");
+  await ensureColumn("appointments", "price", "BIGINT NOT NULL DEFAULT 0");
+  await ensureColumn("appointments", "status_visit", "TEXT NOT NULL DEFAULT 'scheduled'");
+  await ensureColumn("appointments", "status_payment", "TEXT NOT NULL DEFAULT 'unpaid'");
+  await ensureColumn("appointments", "payment_method", "TEXT NOT NULL DEFAULT 'none'");
+  await ensureColumn("appointments", "note", "TEXT DEFAULT ''");
+  await ensureColumn("appointments", "created_at", "TIMESTAMPTZ NOT NULL DEFAULT now()");
+  await ensureColumn("appointments", "updated_at", "TIMESTAMPTZ");
+
+  await pool.query(`UPDATE appointments SET patient_name = '' WHERE patient_name IS NULL;`);
+  await pool.query(`ALTER TABLE appointments ALTER COLUMN patient_name SET NOT NULL;`);
+
+  // FK (аккуратно — если уже есть, будет ошибка, поэтому ловим)
+  try {
+    await pool.query(`
+      ALTER TABLE appointments
+      ADD CONSTRAINT appointments_doctor_fk
+      FOREIGN KEY (doctor_id) REFERENCES doctors(id) ON DELETE SET NULL;
+    `);
+  } catch {}
+  try {
+    await pool.query(`
+      ALTER TABLE appointments
+      ADD CONSTRAINT appointments_service_fk
+      FOREIGN KEY (service_id) REFERENCES services(id) ON DELETE SET NULL;
+    `);
+  } catch {}
+
+  // Индексы (для скорости)
+  try {
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_appt_date_time ON appointments(date, time);`);
+  } catch {}
 }
 
 /* =========================
-   HEALTH
+   STATIC FRONTEND (optional)
+========================= */
+app.use(express.static(path.resolve(__dirname, PUBLIC_DIR)));
+
+/* =========================
+   HEALTH CHECK
 ========================= */
 app.get("/health", (req, res) => {
   res.json({ ok: true, status: "server is alive" });
 });
 
-/* =========================
-   DB TEST
-========================= */
-app.get(
-  "/db-test",
-  asyncHandler(async (req, res) => {
+app.get("/db-test", async (req, res) => {
+  try {
     const r = await pool.query("SELECT now() as now");
     res.json({ ok: true, dbTime: r.rows[0].now });
-  })
-);
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
 
 /* =========================
-   API: DOCTORS
+   API ROUTES
 ========================= */
-app.get(
-  "/api/doctors",
-  asyncHandler(async (req, res) => {
-    const r = await pool.query("SELECT * FROM doctors ORDER BY id ASC");
-    res.json(r.rows);
-  })
-);
 
-app.post(
-  "/api/doctors",
-  asyncHandler(async (req, res) => {
-    const { name, speciality = "", percent = 0, active = true, telegram_chat_id = "" } =
-      req.body || {};
-    if (!name) return res.status(400).json({ error: "name is required" });
+// ---- Doctors
+app.get("/api/doctors", async (req, res) => {
+  const r = await pool.query("SELECT * FROM doctors ORDER BY id ASC");
+  res.json(r.rows);
+});
 
-    const r = await pool.query(
-      `INSERT INTO doctors (name, speciality, percent, active, telegram_chat_id)
-       VALUES ($1,$2,$3,$4,$5)
-       RETURNING *`,
-      [name, speciality, Number(percent) || 0, Boolean(active), String(telegram_chat_id || "")]
-    );
-    res.json(r.rows[0]);
-  })
-);
+app.post("/api/doctors", async (req, res) => {
+  const { name, speciality = "", percent = 0, active = true } = req.body || {};
+  if (!name) return res.status(400).json({ error: "name is required" });
 
-app.put(
-  "/api/doctors/:id",
-  asyncHandler(async (req, res) => {
-    const id = req.params.id;
-    const { name, speciality = "", percent = 0, active = true, telegram_chat_id = "" } =
-      req.body || {};
-    if (!name) return res.status(400).json({ error: "name is required" });
+  const r = await pool.query(
+    `INSERT INTO doctors (name, speciality, percent, active)
+     VALUES ($1, $2, $3, $4)
+     RETURNING *`,
+    [name, speciality, Number(percent) || 0, Boolean(active)]
+  );
+  res.json(r.rows[0]);
+});
 
-    const r = await pool.query(
-      `UPDATE doctors
-       SET name=$1, speciality=$2, percent=$3, active=$4, telegram_chat_id=$5, updated_at=now()
-       WHERE id=$6
-       RETURNING *`,
-      [name, speciality, Number(percent) || 0, Boolean(active), String(telegram_chat_id || ""), id]
-    );
-    if (!r.rows[0]) return res.status(404).json({ error: "doctor not found" });
-    res.json(r.rows[0]);
-  })
-);
+app.put("/api/doctors/:id", async (req, res) => {
+  const id = req.params.id;
+  const { name, speciality = "", percent = 0, active = true } = req.body || {};
+  if (!name) return res.status(400).json({ error: "name is required" });
 
-app.delete(
-  "/api/doctors/:id",
-  asyncHandler(async (req, res) => {
-    await pool.query("DELETE FROM doctors WHERE id=$1", [req.params.id]);
-    res.json({ ok: true });
-  })
-);
+  const r = await pool.query(
+    `UPDATE doctors
+     SET name=$1, speciality=$2, percent=$3, active=$4, updated_at=now()
+     WHERE id=$5
+     RETURNING *`,
+    [name, speciality, Number(percent) || 0, Boolean(active), id]
+  );
 
-/* =========================
-   API: SERVICES
-========================= */
-app.get(
-  "/api/services",
-  asyncHandler(async (req, res) => {
-    const r = await pool.query("SELECT * FROM services ORDER BY id ASC");
-    res.json(r.rows);
-  })
-);
+  if (!r.rows[0]) return res.status(404).json({ error: "doctor not found" });
+  res.json(r.rows[0]);
+});
 
-app.post(
-  "/api/services",
-  asyncHandler(async (req, res) => {
-    const { name, category = "", price = 0, active = true } = req.body || {};
-    if (!name) return res.status(400).json({ error: "name is required" });
+app.delete("/api/doctors/:id", async (req, res) => {
+  const id = req.params.id;
+  await pool.query("DELETE FROM doctors WHERE id=$1", [id]);
+  res.json({ ok: true });
+});
 
-    const r = await pool.query(
-      `INSERT INTO services (name, category, price, active)
-       VALUES ($1,$2,$3,$4)
-       RETURNING *`,
-      [name, category, Number(price) || 0, Boolean(active)]
-    );
-    res.json(r.rows[0]);
-  })
-);
+// ---- Services
+app.get("/api/services", async (req, res) => {
+  const r = await pool.query("SELECT * FROM services ORDER BY id ASC");
+  res.json(r.rows);
+});
 
-app.put(
-  "/api/services/:id",
-  asyncHandler(async (req, res) => {
-    const id = req.params.id;
-    const { name, category = "", price = 0, active = true } = req.body || {};
-    if (!name) return res.status(400).json({ error: "name is required" });
+app.post("/api/services", async (req, res) => {
+  const { name, category = "", price = 0, active = true } = req.body || {};
+  if (!name) return res.status(400).json({ error: "name is required" });
 
-    const r = await pool.query(
-      `UPDATE services
-       SET name=$1, category=$2, price=$3, active=$4, updated_at=now()
-       WHERE id=$5
-       RETURNING *`,
-      [name, category, Number(price) || 0, Boolean(active), id]
-    );
-    if (!r.rows[0]) return res.status(404).json({ error: "service not found" });
-    res.json(r.rows[0]);
-  })
-);
+  const r = await pool.query(
+    `INSERT INTO services (name, category, price, active)
+     VALUES ($1, $2, $3, $4)
+     RETURNING *`,
+    [name, category, Number(price) || 0, Boolean(active)]
+  );
+  res.json(r.rows[0]);
+});
 
-app.delete(
-  "/api/services/:id",
-  asyncHandler(async (req, res) => {
-    await pool.query("DELETE FROM services WHERE id=$1", [req.params.id]);
-    res.json({ ok: true });
-  })
-);
+app.put("/api/services/:id", async (req, res) => {
+  const id = req.params.id;
+  const { name, category = "", price = 0, active = true } = req.body || {};
+  if (!name) return res.status(400).json({ error: "name is required" });
 
-/* =========================
-   API: APPOINTMENTS (snake_case)
-========================= */
-app.get(
-  "/api/appointments",
-  asyncHandler(async (req, res) => {
-    const r = await pool.query("SELECT * FROM appointments ORDER BY date ASC, time ASC");
-    res.json(r.rows);
-  })
-);
+  const r = await pool.query(
+    `UPDATE services
+     SET name=$1, category=$2, price=$3, active=$4, updated_at=now()
+     WHERE id=$5
+     RETURNING *`,
+    [name, category, Number(price) || 0, Boolean(active), id]
+  );
 
-app.post(
-  "/api/appointments",
-  asyncHandler(async (req, res) => {
-    const a = req.body || {};
-    const required = ["date", "time", "doctor_id", "patient_name", "service_id"];
-    for (const k of required) {
-      if (!a[k]) return res.status(400).json({ error: `${k} is required` });
-    }
+  if (!r.rows[0]) return res.status(404).json({ error: "service not found" });
+  res.json(r.rows[0]);
+});
 
-    const r = await pool.query(
-      `INSERT INTO appointments
-        (date, time, doctor_id, patient_name, phone, service_id, price, status_visit, status_payment, payment_method, note)
-       VALUES
-        ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-       RETURNING *`,
-      [
-        a.date,
-        a.time,
-        Number(a.doctor_id),
-        a.patient_name,
-        a.phone || "",
-        Number(a.service_id),
-        Number(a.price) || 0,
-        a.status_visit || "scheduled",
-        a.status_payment || "unpaid",
-        a.payment_method || "none",
-        a.note || "",
-      ]
-    );
+app.delete("/api/services/:id", async (req, res) => {
+  const id = req.params.id;
+  await pool.query("DELETE FROM services WHERE id=$1", [id]);
+  res.json({ ok: true });
+});
 
-    res.json(r.rows[0]);
-  })
-);
+// ---- Appointments
+app.get("/api/appointments", async (req, res) => {
+  const r = await pool.query("SELECT * FROM appointments ORDER BY date ASC, time ASC");
+  res.json(r.rows);
+});
 
-app.put(
-  "/api/appointments/:id",
-  asyncHandler(async (req, res) => {
-    const id = req.params.id;
-    const p = req.body || {};
+function pick(v1, v2) {
+  return v1 != null ? v1 : v2;
+}
 
-    const r = await pool.query(
-      `UPDATE appointments SET
-        date = COALESCE($1, date),
-        time = COALESCE($2, time),
-        doctor_id = COALESCE($3, doctor_id),
-        patient_name = COALESCE($4, patient_name),
-        phone = COALESCE($5, phone),
-        service_id = COALESCE($6, service_id),
-        price = COALESCE($7, price),
-        status_visit = COALESCE($8, status_visit),
-        status_payment = COALESCE($9, status_payment),
-        payment_method = COALESCE($10, payment_method),
-        note = COALESCE($11, note),
-        updated_at = now()
-       WHERE id=$12
-       RETURNING *`,
-      [
-        p.date ?? null,
-        p.time ?? null,
-        p.doctor_id != null ? Number(p.doctor_id) : null,
-        p.patient_name ?? null,
-        p.phone ?? null,
-        p.service_id != null ? Number(p.service_id) : null,
-        p.price != null ? Number(p.price) : null,
-        p.status_visit ?? null,
-        p.status_payment ?? null,
-        p.payment_method ?? null,
-        p.note ?? null,
-        id,
-      ]
-    );
+app.post("/api/appointments", async (req, res) => {
+  const a = req.body || {};
 
-    if (!r.rows[0]) return res.status(404).json({ error: "appointment not found" });
-    res.json(r.rows[0]);
-  })
-);
+  // принимаем И camelCase И snake_case
+  const date = pick(a.date, a.date);
+  const time = pick(a.time, a.time);
+  const doctorId = pick(a.doctorId, a.doctor_id);
+  const serviceId = pick(a.serviceId, a.service_id);
+  const patientName = pick(a.patientName, a.patient_name);
 
-app.delete(
-  "/api/appointments/:id",
-  asyncHandler(async (req, res) => {
-    await pool.query("DELETE FROM appointments WHERE id=$1", [req.params.id]);
-    res.json({ ok: true });
-  })
-);
+  if (!date || !time || !doctorId || !serviceId || !patientName) {
+    return res.status(400).json({ error: "date, time, doctorId, serviceId, patientName are required" });
+  }
+
+  const phone = pick(a.phone, a.phone) || "";
+  const price = Number(pick(a.price, a.price) || 0);
+  const statusVisit = pick(a.statusVisit, a.status_visit) || "scheduled";
+  const statusPayment = pick(a.statusPayment, a.status_payment) || "unpaid";
+  const paymentMethod = pick(a.paymentMethod, a.payment_method) || "none";
+  const note = pick(a.note, a.note) || "";
+
+  const r = await pool.query(
+    `INSERT INTO appointments
+      (date, time, doctor_id, patient_name, phone, service_id, price, status_visit, status_payment, payment_method, note)
+     VALUES
+      ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+     RETURNING *`,
+    [
+      date,
+      time,
+      Number(doctorId),
+      patientName,
+      phone,
+      Number(serviceId),
+      price,
+      statusVisit,
+      statusPayment,
+      paymentMethod,
+      note,
+    ]
+  );
+
+  res.json(r.rows[0]);
+});
+
+app.put("/api/appointments/:id", async (req, res) => {
+  const id = req.params.id;
+  const p = req.body || {};
+
+  // camelCase + snake_case
+  const date = pick(p.date, p.date);
+  const time = pick(p.time, p.time);
+  const doctorId = pick(p.doctorId, p.doctor_id);
+  const serviceId = pick(p.serviceId, p.service_id);
+  const patientName = pick(p.patientName, p.patient_name);
+  const phone = pick(p.phone, p.phone);
+  const price = pick(p.price, p.price);
+  const statusVisit = pick(p.statusVisit, p.status_visit);
+  const statusPayment = pick(p.statusPayment, p.status_payment);
+  const paymentMethod = pick(p.paymentMethod, p.payment_method);
+  const note = pick(p.note, p.note);
+
+  const r = await pool.query(
+    `UPDATE appointments SET
+      date = COALESCE($1, date),
+      time = COALESCE($2, time),
+      doctor_id = COALESCE($3, doctor_id),
+      patient_name = COALESCE($4, patient_name),
+      phone = COALESCE($5, phone),
+      service_id = COALESCE($6, service_id),
+      price = COALESCE($7, price),
+      status_visit = COALESCE($8, status_visit),
+      status_payment = COALESCE($9, status_payment),
+      payment_method = COALESCE($10, payment_method),
+      note = COALESCE($11, note),
+      updated_at = now()
+     WHERE id=$12
+     RETURNING *`,
+    [
+      date ?? null,
+      time ?? null,
+      doctorId != null ? Number(doctorId) : null,
+      patientName ?? null,
+      phone ?? null,
+      serviceId != null ? Number(serviceId) : null,
+      price != null ? Number(price) : null,
+      statusVisit ?? null,
+      statusPayment ?? null,
+      paymentMethod ?? null,
+      note ?? null,
+      id,
+    ]
+  );
+
+  if (!r.rows[0]) return res.status(404).json({ error: "appointment not found" });
+  res.json(r.rows[0]);
+});
+
+app.delete("/api/appointments/:id", async (req, res) => {
+  const id = req.params.id;
+  await pool.query("DELETE FROM appointments WHERE id=$1", [id]);
+  res.json({ ok: true });
+});
 
 /* =========================
-   404 for /api
+   404 FALLBACK (API)
 ========================= */
 app.use("/api", (req, res) => {
   res.status(404).json({ error: "API endpoint not found" });
 });
 
 /* =========================
-   ERROR HANDLER
-========================= */
-app.use((err, req, res, next) => {
-  console.error("API ERROR:", err);
-  res.status(500).json({ error: err.message || "Internal Server Error" });
-});
-
-/* =========================
-   START
+   START SERVER
 ========================= */
 initDb()
   .then(() => {
     app.listen(PORT, () => {
       console.log("====================================");
       console.log("SERVER STARTED");
-      console.log(`PORT: ${PORT}`);
+      console.log(`http://localhost:${PORT}`);
       console.log("====================================");
     });
   })

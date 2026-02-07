@@ -27,8 +27,7 @@ app.use(
     origin: (origin, cb) => {
       if (!origin) return cb(null, true); // Postman/curl
       if (ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
-      // пока мягко: пропускаем всех. Потом ужесточим.
-      return cb(null, true);
+      return cb(null, true); // позже ужесточим
     },
     credentials: false,
   })
@@ -70,6 +69,32 @@ async function dbNow() {
 app.use(express.static(path.resolve(__dirname, PUBLIC_DIR)));
 
 /* =========================
+   HELPERS
+========================= */
+function pick(v1, v2) {
+  return v1 != null ? v1 : v2;
+}
+
+function isUuid(v) {
+  return (
+    typeof v === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      v.trim()
+    )
+  );
+}
+
+function toBool(v, def = true) {
+  if (v === true || v === false) return v;
+  if (typeof v === "string") {
+    const s = v.trim().toLowerCase();
+    if (["true", "1", "yes", "y"].includes(s)) return true;
+    if (["false", "0", "no", "n"].includes(s)) return false;
+  }
+  return def;
+}
+
+/* =========================
    HEALTH CHECK
 ========================= */
 app.get("/health", async (req, res) => {
@@ -85,65 +110,39 @@ app.get("/health", async (req, res) => {
 /* =========================
    DEBUG (temporary)
 ========================= */
-app.get("/api/_debug/schema", async (req, res) => {
+app.get("/api/_debug/doctors-columns", async (req, res) => {
   try {
     const r = await pool.query(`
-      SELECT table_name, column_name, data_type
+      SELECT column_name, data_type, is_nullable
       FROM information_schema.columns
-      WHERE table_schema='public'
-        AND table_name IN ('doctors','services','appointments')
-      ORDER BY table_name, ordinal_position
+      WHERE table_schema='public' AND table_name='doctors'
+      ORDER BY ordinal_position
     `);
     res.json(r.rows);
   } catch (err) {
-    console.error("GET /api/_debug/schema error:", err);
+    console.error("GET /api/_debug/doctors-columns error:", err);
     res.status(500).json({ error: err.message });
   }
 });
-
-/* =========================
-   HELPERS
-========================= */
-function pick(v1, v2) {
-  return v1 != null ? v1 : v2;
-}
-
-function isUuid(v) {
-  return typeof v === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v.trim());
-}
-
-function toBool(v, def = true) {
-  if (v === true || v === false) return v;
-  if (typeof v === "string") {
-    const s = v.trim().toLowerCase();
-    if (["true", "1", "yes", "y"].includes(s)) return true;
-    if (["false", "0", "no", "n"].includes(s)) return false;
-  }
-  return def;
-}
 
 /* =========================
    API ROUTES
 ========================= */
 
 /* ---------- DOCTORS ----------
-   DB columns (реальные):
-   - id (uuid)
-   - full_name (text NOT NULL)
-   - specialty (text)
-   - percent (integer) [у тебя уже есть]
-   - active (boolean)
-   - created_at (timestamp)
-   - updated_at (timestamptz)
-   + telegram_chat_id, telegram_link_code (оставляем на будущее)
+  Твоя реальная таблица сейчас "смешанная":
+  - full_name (NOT NULL)
+  - name (NOT NULL)  <-- из-за этого падало
+  - specialty и speciality
+  - id uuid
 */
 app.get("/api/doctors", async (req, res) => {
   try {
     const r = await pool.query(`
       SELECT
         id,
-        full_name AS name,
-        specialty AS speciality,
+        COALESCE(full_name, name) AS name,
+        COALESCE(specialty, speciality) AS speciality,
         percent,
         active,
         created_at,
@@ -164,7 +163,10 @@ app.post("/api/doctors", async (req, res) => {
   try {
     const { name, speciality = "", percent = 0, active = true } = req.body || {};
 
-    if (!name || String(name).trim().length < 2) {
+    const nm = String(name || "").trim();
+    const sp = String(speciality || "").trim();
+
+    if (!nm || nm.length < 2) {
       return res.status(400).json({ error: "name is required" });
     }
 
@@ -175,12 +177,12 @@ app.post("/api/doctors", async (req, res) => {
 
     const r = await pool.query(
       `
-      INSERT INTO doctors (full_name, specialty, percent, active)
-      VALUES ($1, $2, $3, $4)
+      INSERT INTO doctors (full_name, name, specialty, speciality, percent, active)
+      VALUES ($1, $2, $3, $4, $5, $6)
       RETURNING
         id,
-        full_name AS name,
-        specialty AS speciality,
+        COALESCE(full_name, name) AS name,
+        COALESCE(specialty, speciality) AS speciality,
         percent,
         active,
         created_at,
@@ -188,7 +190,7 @@ app.post("/api/doctors", async (req, res) => {
         telegram_chat_id,
         telegram_link_code
       `,
-      [String(name).trim(), String(speciality).trim(), Math.round(pct), toBool(active, true)]
+      [nm, nm, sp, sp, Math.round(pct), toBool(active, true)]
     );
 
     res.status(201).json(r.rows[0]);
@@ -204,7 +206,10 @@ app.put("/api/doctors/:id", async (req, res) => {
     if (!isUuid(id)) return res.status(400).json({ error: "invalid doctor id" });
 
     const { name, speciality = "", percent = 0, active = true } = req.body || {};
-    if (!name || String(name).trim().length < 2) {
+    const nm = String(name || "").trim();
+    const sp = String(speciality || "").trim();
+
+    if (!nm || nm.length < 2) {
       return res.status(400).json({ error: "name is required" });
     }
 
@@ -216,12 +221,19 @@ app.put("/api/doctors/:id", async (req, res) => {
     const r = await pool.query(
       `
       UPDATE doctors
-      SET full_name=$1, specialty=$2, percent=$3, active=$4, updated_at=now()
-      WHERE id=$5
+      SET
+        full_name=$1,
+        name=$2,
+        specialty=$3,
+        speciality=$4,
+        percent=$5,
+        active=$6,
+        updated_at=now()
+      WHERE id=$7
       RETURNING
         id,
-        full_name AS name,
-        specialty AS speciality,
+        COALESCE(full_name, name) AS name,
+        COALESCE(specialty, speciality) AS speciality,
         percent,
         active,
         created_at,
@@ -229,7 +241,7 @@ app.put("/api/doctors/:id", async (req, res) => {
         telegram_chat_id,
         telegram_link_code
       `,
-      [String(name).trim(), String(speciality).trim(), Math.round(pct), toBool(active, true), id]
+      [nm, nm, sp, sp, Math.round(pct), toBool(active, true), id]
     );
 
     if (!r.rows[0]) return res.status(404).json({ error: "doctor not found" });
@@ -254,12 +266,12 @@ app.delete("/api/doctors/:id", async (req, res) => {
 });
 
 /* ---------- SERVICES ----------
-   Оставляем как было (name/category/price/active).
-   Если в твоей БД services уже другая — скажешь, подстроим.
+  Оставляю как у тебя было (name/category/price/active).
+  Если у services другая схема — скинешь колонки, подстрою.
 */
 app.get("/api/services", async (req, res) => {
   try {
-    const r = await pool.query("SELECT * FROM services ORDER BY created_at DESC NULLS LAST, id ASC");
+    const r = await pool.query("SELECT * FROM services ORDER BY id ASC");
     res.json(r.rows);
   } catch (err) {
     console.error("GET /api/services error:", err);
@@ -278,6 +290,7 @@ app.post("/api/services", async (req, res) => {
        RETURNING *`,
       [String(name).trim(), String(category).trim(), Number(price) || 0, toBool(active, true)]
     );
+
     res.status(201).json(r.rows[0]);
   } catch (err) {
     console.error("POST /api/services error:", err);
@@ -319,9 +332,9 @@ app.delete("/api/services/:id", async (req, res) => {
 });
 
 /* ---------- APPOINTMENTS ----------
-   ВАЖНО: doctor_id должен быть UUID, потому что doctors.id = uuid.
-   service_id оставляем как есть (у тебя services вероятно bigserial).
-   Если services тоже uuid — скажешь, подстроим.
+  ВАЖНО: doctors.id = uuid => doctor_id должен быть uuid.
+  Я принимаю doctorId как uuid строку.
+  service_id оставляю как number (как у тебя было).
 */
 app.get("/api/appointments", async (req, res) => {
   try {

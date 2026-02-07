@@ -765,25 +765,30 @@ if (apptForm) {
 
     const date = apptDateInput?.value;
     const time = apptTimeInput?.value;
-    const doctorId = Number(apptDoctorSelect?.value || 0);
+    const doctorId = doctorSelect.value.trim();
     const patientName = normalizeName(apptPatientInput?.value || "");
     const phone = normalizePhone(apptPhoneInput?.value || "");
-    const serviceId = Number(apptServiceSelect?.value || 0);
+    const serviceId = serviceSelect.value.trim();
     const price = toNumber(apptPriceInput?.value || 0);
     const statusVisit = apptStatusVisitSelect?.value || "scheduled";
     const statusPayment = apptStatusPaymentSelect?.value || "unpaid";
     const paymentMethod = apptPaymentMethodSelect?.value || "none";
 
-    if (!date || !time || !doctorId || !patientName || !serviceId) {
-      showToast("Заполните все обязательные поля", "error");
-      return;
-    }
+    console.log({ date, time, doctorId, patientName, serviceId });
+
+
+    if (!date) return showToast("Выберите дату", "error");
+    if (!time) return showToast("Выберите время", "error");
+    if (!doctorId) return showToast("Выберите врача", "error");
+    if (!patientName) return showToast("Введите пациента", "error");
+    if (!serviceId) return showToast("Выберите услугу", "error");
 
     const allExisting = getAppointments();
     if (hasSlotConflict(allExisting, { date, time, doctorId })) {
       showToast("На это время у врача уже есть запись", "error");
       return;
     }
+
 
     // ВАЖНО: для backend используем snake_case
     const payloadApi = {
@@ -1703,35 +1708,14 @@ function renderDoctors() {
   if (!doctorsTableBody) return;
   const doctors = getDoctors();
 
-  doctorsTableBody.innerHTML = "";
-  doctors
-    .slice()
-    .sort((a, b) => a.name.localeCompare(b.name, "ru"))
-    .forEach((d) => {
-      const tr = document.createElement("tr");
-      tr.innerHTML = `
-        <td>${d.name}</td>
-        <td>${d.speciality || "-"}</td>
-        <td class="col-amount">${toNumber(d.percent, 0)}</td>
-        <td>${d.active ? "Да" : "Нет"}</td>
-        <td class="col-actions">
-          <button class="table-action-btn" data-action="edit" type="button" title="Редактировать">✏️</button>
-          <button class="table-action-btn" data-action="delete" type="button" title="Удалить">🗑</button>
-        </td>
-      `;
+  doctorSelect.innerHTML = `<option value="">Выберите врача</option>`;
 
-      tr.querySelector('[data-action="edit"]')?.addEventListener("click", () =>
-        openDoctorModal(d.id),
-      );
-      tr.querySelector('[data-action="delete"]')?.addEventListener(
-        "click",
-        async () => {
-          await deleteDoctor(d.id);
-        },
-      );
-
-      doctorsTableBody.appendChild(tr);
-    });
+  doctors.forEach((d) => {
+    const opt = document.createElement("option");
+    opt.value = d.id; // UUID строка
+    opt.textContent = d.name;
+    doctorSelect.appendChild(opt);
+  });
 }
 
 function openDoctorModal(id = null) {

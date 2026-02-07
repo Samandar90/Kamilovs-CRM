@@ -173,90 +173,86 @@ app.get("/db-test", async (req, res) => {
 /* =========================
    API ROUTES
 ========================= */
-
-// ---- Doctors
+// ---- Doctors (SAFE)
 app.get("/api/doctors", async (req, res) => {
-  const r = await pool.query("SELECT * FROM doctors ORDER BY id ASC");
-  res.json(r.rows);
+  try {
+    const r = await pool.query("SELECT * FROM doctors ORDER BY id ASC");
+    res.json(r.rows);
+  } catch (err) {
+    console.error("GET /api/doctors error:", err);
+    res.status(500).json({ error: "Internal Server Error", detail: err.message });
+  }
 });
 
 app.post("/api/doctors", async (req, res) => {
-  const { name, speciality = "", percent = 0, active = true } = req.body || {};
-  if (!name) return res.status(400).json({ error: "name is required" });
+  console.log("POST /api/doctors body:", req.body);
 
-  const r = await pool.query(
-    `INSERT INTO doctors (name, speciality, percent, active)
-     VALUES ($1, $2, $3, $4)
-     RETURNING *`,
-    [name, speciality, Number(percent) || 0, Boolean(active)]
-  );
-  res.json(r.rows[0]);
+  try {
+    const { name, speciality = "", percent = 0, active = true } = req.body || {};
+    if (!name) return res.status(400).json({ error: "name is required" });
+
+    const r = await pool.query(
+      `INSERT INTO doctors (name, speciality, percent, active)
+       VALUES ($1, $2, $3, $4)
+       RETURNING *`,
+      [String(name).trim(), String(speciality).trim(), Number(percent) || 0, Boolean(active)]
+    );
+
+    res.status(201).json(r.rows[0]);
+  } catch (err) {
+    console.error("POST /api/doctors error:", err);
+    res.status(500).json({ error: "Internal Server Error", detail: err.message });
+  }
 });
 
 app.put("/api/doctors/:id", async (req, res) => {
-  const id = req.params.id;
-  const { name, speciality = "", percent = 0, active = true } = req.body || {};
-  if (!name) return res.status(400).json({ error: "name is required" });
+  try {
+    const id = req.params.id;
+    const { name, speciality = "", percent = 0, active = true } = req.body || {};
+    if (!name) return res.status(400).json({ error: "name is required" });
 
-  const r = await pool.query(
-    `UPDATE doctors
-     SET name=$1, speciality=$2, percent=$3, active=$4, updated_at=now()
-     WHERE id=$5
-     RETURNING *`,
-    [name, speciality, Number(percent) || 0, Boolean(active), id]
-  );
+    const r = await pool.query(
+      `UPDATE doctors
+       SET name=$1, speciality=$2, percent=$3, active=$4, updated_at=now()
+       WHERE id=$5
+       RETURNING *`,
+      [String(name).trim(), String(speciality).trim(), Number(percent) || 0, Boolean(active), id]
+    );
 
-  if (!r.rows[0]) return res.status(404).json({ error: "doctor not found" });
-  res.json(r.rows[0]);
+    if (!r.rows[0]) return res.status(404).json({ error: "doctor not found" });
+    res.json(r.rows[0]);
+  } catch (err) {
+    console.error("PUT /api/doctors error:", err);
+    res.status(500).json({ error: "Internal Server Error", detail: err.message });
+  }
 });
 
 app.delete("/api/doctors/:id", async (req, res) => {
-  const id = req.params.id;
-  await pool.query("DELETE FROM doctors WHERE id=$1", [id]);
-  res.json({ ok: true });
+  try {
+    const id = req.params.id;
+    await pool.query("DELETE FROM doctors WHERE id=$1", [id]);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("DELETE /api/doctors error:", err);
+    res.status(500).json({ error: "Internal Server Error", detail: err.message });
+  }
 });
 
-// ---- Services
-app.get("/api/services", async (req, res) => {
-  const r = await pool.query("SELECT * FROM services ORDER BY id ASC");
-  res.json(r.rows);
+app.get("/api/_debug/doctors-columns", async (req, res) => {
+  try {
+    const r = await pool.query(`
+      SELECT column_name, data_type
+      FROM information_schema.columns
+      WHERE table_name='doctors'
+      ORDER BY ordinal_position
+    `);
+    res.json(r.rows);
+  } catch (err) {
+    console.error("DEBUG doctors-columns error:", err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
-app.post("/api/services", async (req, res) => {
-  const { name, category = "", price = 0, active = true } = req.body || {};
-  if (!name) return res.status(400).json({ error: "name is required" });
-
-  const r = await pool.query(
-    `INSERT INTO services (name, category, price, active)
-     VALUES ($1, $2, $3, $4)
-     RETURNING *`,
-    [name, category, Number(price) || 0, Boolean(active)]
-  );
-  res.json(r.rows[0]);
-});
-
-app.put("/api/services/:id", async (req, res) => {
-  const id = req.params.id;
-  const { name, category = "", price = 0, active = true } = req.body || {};
-  if (!name) return res.status(400).json({ error: "name is required" });
-
-  const r = await pool.query(
-    `UPDATE services
-     SET name=$1, category=$2, price=$3, active=$4, updated_at=now()
-     WHERE id=$5
-     RETURNING *`,
-    [name, category, Number(price) || 0, Boolean(active), id]
-  );
-
-  if (!r.rows[0]) return res.status(404).json({ error: "service not found" });
-  res.json(r.rows[0]);
-});
-
-app.delete("/api/services/:id", async (req, res) => {
-  const id = req.params.id;
-  await pool.query("DELETE FROM services WHERE id=$1", [id]);
-  res.json({ ok: true });
-});
 
 // ---- Appointments
 app.get("/api/appointments", async (req, res) => {

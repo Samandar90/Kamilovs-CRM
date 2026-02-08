@@ -108,6 +108,8 @@ async function apiFetch(
   path,
   { method = "GET", body, headers = {}, timeoutMs = 12000 } = {}
 ) {
+  console.log("API ERROR", url, "status", res.status, "data:", data);
+
   if (!API_BASE) throw new Error("API_BASE не настроен");
 
   const p = String(path || "");
@@ -244,6 +246,26 @@ function hasSlotConflict(all, { date, time, doctorId }, excludeId = null) {
 
 // ===== TOAST =====
 const toastContainer = document.getElementById("toastContainer");
+
+function toToastText(x) {
+  if (x == null) return "Ошибка";
+  if (typeof x === "string") return x;
+  if (x instanceof Error) return x.message || "Ошибка";
+  if (typeof x?.message === "string") return x.message;
+  if (typeof x?.error === "string") return x.error;
+  if (typeof x?.error?.message === "string") return x.error.message;
+  if (typeof x?.error?.details === "string") return x.error.details;
+  try { return JSON.stringify(x); } catch { return String(x); }
+}
+
+// пример: адаптируй под твою реализацию
+function showToast(message, type = "info") {
+  const text = toToastText(message);
+  // дальше твой текущий код, но используй text вместо message
+  // ...
+}
+
+
 function showToast(message, type = "info") {
   if (!toastContainer) return;
   const toast = document.createElement("div");

@@ -1,8 +1,11 @@
 // ===============================
-// Kamilovs Clinic CRM — app.js (Pro) — STABLE (NO DEMO, AUTO API_BASE, TOAST FIX)
+// Kamilovs Clinic CRM — app.js (Pro) — STABLE FULL
+// NO DEMO • AUTO API_BASE • WORKING NAV • TOAST FIX • GH PAGES SAFE
 // ===============================
 
-// ===== НАСТРОЙКИ / КОНСТАНТЫ =====
+/* =========================
+   SETTINGS / CONSTANTS
+========================= */
 const LOGIN_KEY = "crm_logged_in_v1";
 const AUTH_TOKEN_KEY = "crm_auth_token_v1";
 const AUTH_USER_KEY = "crm_auth_user_v1"; // {username, role}
@@ -10,13 +13,21 @@ const STORAGE_PATIENTS_ARCHIVE = "crm_patients_archived_v1";
 
 const BRAND_THEME = { accent: "#22d3ee", accent2: "#6366f1" };
 
-// ====== AUTO API_BASE ======
+// AUTO API_BASE (локально -> localhost, иначе -> Render)
 const API_BASE =
   location.hostname === "localhost" || location.hostname === "127.0.0.1"
     ? "http://localhost:3000"
     : "https://kamilovs-crm.onrender.com";
 
-// ====== AUTH TOKEN HELPERS (пока токен не используем, но оставляем) ======
+/* =========================
+   AUTH (local users for now)
+========================= */
+const LOCAL_USERS = [
+  { username: "admin", password: "samandar014", role: "admin" },
+  { username: "manager", password: "manager014", role: "manager" },
+  { username: "doctor", password: "doctor014", role: "doctor" },
+];
+
 function getAuthToken() {
   return localStorage.getItem(AUTH_TOKEN_KEY) || "";
 }
@@ -31,7 +42,9 @@ function getAuthUser() {
   }
 }
 
-// ===== ПОМОЩНИКИ (общие) =====
+/* =========================
+   UI HELPERS
+========================= */
 function applyBrandTheme() {
   document.documentElement.style.setProperty("--accent", BRAND_THEME.accent);
   document.documentElement.style.setProperty("--accent-2", BRAND_THEME.accent2);
@@ -68,7 +81,46 @@ function moneyUZS(n) {
   return `${val.toLocaleString("ru-RU")} UZS`;
 }
 
-// ====== API HELPERS ======
+/* =========================
+   TOAST (NO [object Object])
+========================= */
+const toastContainer = document.getElementById("toastContainer");
+
+function toToastText(x) {
+  if (x == null) return "Ошибка";
+  if (typeof x === "string") return x;
+  if (x instanceof Error) return x.message || "Ошибка";
+  if (typeof x?.message === "string") return x.message;
+  if (typeof x?.error === "string") return x.error;
+  if (typeof x?.error?.message === "string") return x.error.message;
+  if (typeof x?.error?.details === "string") return x.error.details;
+  try {
+    return JSON.stringify(x);
+  } catch {
+    return String(x);
+  }
+}
+
+function showToast(message, type = "info") {
+  if (!toastContainer) return;
+  const text = toToastText(message);
+
+  const toast = document.createElement("div");
+  toast.className = `toast toast-${type}`;
+  toast.innerHTML = `<div class="toast-dot"></div><div>${text}</div>`;
+  toastContainer.appendChild(toast);
+
+  requestAnimationFrame(() => toast.classList.add("toast--visible"));
+
+  setTimeout(() => {
+    toast.classList.remove("toast--visible");
+    setTimeout(() => toast.remove(), 220);
+  }, 2600);
+}
+
+/* =========================
+   API HELPERS
+========================= */
 function extractApiErrorMessage(data, status) {
   if (!data) return `API error ${status}`;
   if (typeof data === "string") return data;
@@ -77,10 +129,8 @@ function extractApiErrorMessage(data, status) {
   if (typeof data.message === "string") return data.message;
   if (typeof data.title === "string") return data.title;
 
-  // формат { error: "..." }
   if (typeof data.error === "string") return data.error;
 
-  // формат { ok:false, error:{ message, details } }
   if (data.error && typeof data.error === "object") {
     if (typeof data.error.message === "string") return data.error.message;
     if (typeof data.error.details === "string") return data.error.details;
@@ -93,7 +143,10 @@ function extractApiErrorMessage(data, status) {
   }
 }
 
-async function apiFetch(path, { method = "GET", body, headers = {}, timeoutMs = 12000 } = {}) {
+async function apiFetch(
+  path,
+  { method = "GET", body, headers = {}, timeoutMs = 12000 } = {},
+) {
   const p = String(path || "");
   const safePath = p.startsWith("/") ? p : `/${p}`;
   const url = `${API_BASE}${safePath}`;
@@ -127,13 +180,15 @@ async function apiFetch(path, { method = "GET", body, headers = {}, timeoutMs = 
 
     if (!res.ok) throw new Error(extractApiErrorMessage(data, res.status));
 
-    // ok:false но HTTP 200
+    // ok:false but HTTP 200
     if (data && typeof data === "object" && data.ok === false) {
       throw new Error(extractApiErrorMessage(data, res.status));
     }
 
     // unwrap {ok:true,data:...}
-    if (data && typeof data === "object" && data.ok === true && "data" in data) return data.data;
+    if (data && typeof data === "object" && data.ok === true && "data" in data) {
+      return data.data;
+    }
 
     return data;
   } catch (e) {
@@ -147,14 +202,15 @@ async function apiFetch(path, { method = "GET", body, headers = {}, timeoutMs = 
 async function apiHealth() {
   try {
     const r = await apiFetch("/health", { timeoutMs: 7000 });
-    // health у сервера в формате {ok:true,data:{...}}
     return !!r;
   } catch {
     return false;
   }
 }
 
-// ===== API METHODS =====
+/* =========================
+   API METHODS
+========================= */
 const api = {
   getDoctors: () => apiFetch("/api/doctors"),
   createDoctor: (payload) => apiFetch("/api/doctors", { method: "POST", body: payload }),
@@ -172,7 +228,9 @@ const api = {
   deleteAppointment: (id) => apiFetch(`/api/appointments/${id}`, { method: "DELETE" }),
 };
 
-// ===== ARCHIVE =====
+/* =========================
+   ARCHIVE (local)
+========================= */
 function loadArchivedPatientsSetLocal() {
   const raw = localStorage.getItem(STORAGE_PATIENTS_ARCHIVE);
   if (!raw) return new Set();
@@ -184,7 +242,9 @@ function loadArchivedPatientsSetLocal() {
   }
 }
 
-// ===== STATE =====
+/* =========================
+   STATE
+========================= */
 const state = {
   doctors: [],
   services: [],
@@ -193,14 +253,28 @@ const state = {
   ready: false,
 };
 
-function setDoctors(list) { state.doctors = Array.isArray(list) ? list : []; }
-function setServices(list) { state.services = Array.isArray(list) ? list : []; }
-function setAppointments(list) { state.appointments = Array.isArray(list) ? list : []; }
-function getDoctors() { return state.doctors; }
-function getServices() { return state.services; }
-function getAppointments() { return state.appointments; }
+function setDoctors(list) {
+  state.doctors = Array.isArray(list) ? list : [];
+}
+function setServices(list) {
+  state.services = Array.isArray(list) ? list : [];
+}
+function setAppointments(list) {
+  state.appointments = Array.isArray(list) ? list : [];
+}
+function getDoctors() {
+  return state.doctors;
+}
+function getServices() {
+  return state.services;
+}
+function getAppointments() {
+  return state.appointments;
+}
 
-// ====== NORMALIZE (API -> UI) ======
+/* =========================
+   NORMALIZE (API -> UI)
+========================= */
 function normalizeDoctor(d) {
   if (!d) return null;
   return {
@@ -243,49 +317,22 @@ function normalizeAppointment(a) {
   };
 }
 
-// ===== BUSINESS RULES =====
+/* =========================
+   BUSINESS RULES
+========================= */
 function hasSlotConflict(all, { date, time, doctorId }, excludeId = null) {
   return (Array.isArray(all) ? all : []).some(
     (a) =>
       a.date === date &&
       a.time === time &&
       String(a.doctorId) === String(doctorId) &&
-      (excludeId == null || String(a.id) !== String(excludeId))
+      (excludeId == null || String(a.id) !== String(excludeId)),
   );
 }
 
-// ===== TOAST (FIXED: ONE FUNCTION ONLY) =====
-const toastContainer = document.getElementById("toastContainer");
-
-function toToastText(x) {
-  if (x == null) return "Ошибка";
-  if (typeof x === "string") return x;
-  if (x instanceof Error) return x.message || "Ошибка";
-  if (typeof x?.message === "string") return x.message;
-  if (typeof x?.error === "string") return x.error;
-  if (typeof x?.error?.message === "string") return x.error.message;
-  if (typeof x?.error?.details === "string") return x.error.details;
-  try { return JSON.stringify(x); } catch { return String(x); }
-}
-
-function showToast(message, type = "info") {
-  if (!toastContainer) return;
-  const text = toToastText(message);
-
-  const toast = document.createElement("div");
-  toast.className = `toast toast-${type}`;
-  toast.innerHTML = `<div class="toast-dot"></div><div>${text}</div>`;
-  toastContainer.appendChild(toast);
-
-  requestAnimationFrame(() => toast.classList.add("toast--visible"));
-
-  setTimeout(() => {
-    toast.classList.remove("toast--visible");
-    setTimeout(() => toast.remove(), 220);
-  }, 2600);
-}
-
-// ===== DOM =====
+/* =========================
+   DOM
+========================= */
 const loginScreen = document.getElementById("loginScreen");
 const mainScreen = document.getElementById("mainScreen");
 const loginUsername = document.getElementById("loginUsername");
@@ -310,8 +357,13 @@ const apptPaymentMethodSelect = document.getElementById("apptPaymentMethod");
 const rangeFromInput = document.getElementById("rangeFrom");
 const rangeToInput = document.getElementById("rangeTo");
 
-const addDoctorBtn = document.getElementById("addDoctorBtn");
+// tables
 const doctorsTableBody = document.getElementById("doctorsTableBody");
+const servicesTableBody = document.getElementById("servicesTableBody");
+const allAppointmentsBody = document.getElementById("allAppointmentsBody");
+
+// modals
+const addDoctorBtn = document.getElementById("addDoctorBtn");
 const doctorModalBackdrop = document.getElementById("doctorModalBackdrop");
 const doctorModalTitle = document.getElementById("doctorModalTitle");
 const doctorForm = document.getElementById("doctorForm");
@@ -322,7 +374,6 @@ const doctorActiveSelect = document.getElementById("doctorActive");
 const doctorCancelBtn = document.getElementById("doctorCancelBtn");
 
 const addServiceBtn = document.getElementById("addServiceBtn");
-const servicesTableBody = document.getElementById("servicesTableBody");
 const serviceModalBackdrop = document.getElementById("serviceModalBackdrop");
 const serviceModalTitle = document.getElementById("serviceModalTitle");
 const serviceForm = document.getElementById("serviceForm");
@@ -332,21 +383,33 @@ const servicePriceInput = document.getElementById("servicePrice");
 const serviceActiveSelect = document.getElementById("serviceActive");
 const serviceCancelBtn = document.getElementById("serviceCancelBtn");
 
-// ===== LOGIN (локально, пока backend auth не внедрили) =====
-// Сразу заложили роли: admin / manager / doctor
-const LOCAL_USERS = [
-  { username: "admin", password: "samandar014", role: "admin" },
-  { username: "manager", password: "manager014", role: "manager" },
-  { username: "doctor", password: "doctor014", role: "doctor" },
-];
-
+/* =========================
+   LOGIN (FIX overlay clicks)
+========================= */
 function showLogin() {
-  loginScreen?.classList.remove("hidden");
-  mainScreen?.classList.add("hidden");
+  if (loginScreen) {
+    loginScreen.classList.remove("hidden");
+    loginScreen.style.display = "";
+    loginScreen.style.pointerEvents = "auto";
+  }
+  if (mainScreen) {
+    mainScreen.classList.add("hidden");
+    mainScreen.style.display = "none";
+    mainScreen.style.pointerEvents = "none";
+  }
 }
+
 function showMain() {
-  loginScreen?.classList.add("hidden");
-  mainScreen?.classList.remove("hidden");
+  if (loginScreen) {
+    loginScreen.classList.add("hidden");
+    loginScreen.style.display = "none";
+    loginScreen.style.pointerEvents = "none";
+  }
+  if (mainScreen) {
+    mainScreen.classList.remove("hidden");
+    mainScreen.style.display = "";
+    mainScreen.style.pointerEvents = "auto";
+  }
 }
 
 function checkAuthOnLoad() {
@@ -393,7 +456,64 @@ if (logoutBtn) {
   });
 }
 
-// ===== SELECTS =====
+/* =========================
+   NAV (WORKING)
+========================= */
+const navButtons = document.querySelectorAll(".nav-btn");
+const views = document.querySelectorAll(".view");
+const pageTitle = document.getElementById("pageTitle");
+const pageSubtitle = document.getElementById("pageSubtitle");
+
+function setActiveView(view) {
+  navButtons.forEach((b) => b.classList.remove("active"));
+  const btn = Array.from(navButtons).find((b) => b.getAttribute("data-view") === view);
+  if (btn) btn.classList.add("active");
+
+  views.forEach((v) => v.classList.remove("view--active"));
+  const viewEl = document.getElementById(`view-${view}`);
+  if (viewEl) viewEl.classList.add("view--active");
+
+  if (pageTitle && pageSubtitle) {
+    const map = {
+      dashboard: ["Дашборд", "Сводка по клинике"],
+      appointments: ["Записи", "Создание и управление записями"],
+      doctors: ["Врачи", "Справочник врачей"],
+      services: ["Услуги", "Справочник услуг"],
+      patients: ["Пациенты", "История пациентов"],
+      reports: ["Отчёты", "Отчёты по клинике"],
+    };
+    const pair = map[view] || ["Kamilovs CRM", ""];
+    pageTitle.textContent = pair[0];
+    pageSubtitle.textContent = pair[1];
+  }
+
+  if (view === "dashboard") renderDashboard?.();
+  if (view === "appointments") renderAppointmentsTable?.();
+  if (view === "doctors") renderDoctors?.();
+  if (view === "services") renderServices?.();
+  if (view === "patients") renderPatients?.();
+  if (view === "reports") {
+    renderReportsDay?.();
+    renderReportsMonthYear?.();
+  }
+}
+
+function bindNav() {
+  navButtons.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const view = btn.getAttribute("data-view");
+      if (!view) return;
+      setActiveView(view);
+    });
+  });
+
+  const active = document.querySelector(".nav-btn.active")?.getAttribute("data-view");
+  setActiveView(active || "dashboard");
+}
+
+/* =========================
+   SELECTS
+========================= */
 function fillDoctorSelect(selectEl, doctors, includeAll = false) {
   if (!selectEl) return;
   const prev = selectEl.value;
@@ -413,7 +533,11 @@ function fillDoctorSelect(selectEl, doctors, includeAll = false) {
       selectEl.appendChild(option);
     });
 
-  if (prev && Array.from(selectEl.options).some((o) => o.value === prev)) selectEl.value = prev;
+  if (prev && Array.from(selectEl.options).some((o) => o.value === prev)) {
+    selectEl.value = prev;
+  } else {
+    selectEl.value = "";
+  }
 }
 
 function fillServiceSelect(selectEl, services, onlyActive = true) {
@@ -439,7 +563,11 @@ function fillServiceSelect(selectEl, services, onlyActive = true) {
       selectEl.appendChild(option);
     });
 
-  if (prev && Array.from(selectEl.options).some((o) => o.value === prev)) selectEl.value = prev;
+  if (prev && Array.from(selectEl.options).some((o) => o.value === prev)) {
+    selectEl.value = prev;
+  } else {
+    selectEl.value = "";
+  }
 }
 
 function refreshSelectsOnly() {
@@ -447,7 +575,9 @@ function refreshSelectsOnly() {
   fillServiceSelect(apptServiceSelect, getServices());
 }
 
-// ===== BOOTSTRAP (API ONLY, NO DEMO) =====
+/* =========================
+   BOOTSTRAP (API ONLY)
+========================= */
 async function bootstrapData() {
   state.archivedPatients = loadArchivedPatientsSetLocal();
 
@@ -457,37 +587,32 @@ async function bootstrapData() {
     setDoctors([]);
     setServices([]);
     setAppointments([]);
-    return { mode: "api", ok: false };
+    return { ok: false };
   }
 
-  try {
-    const [doctorsRaw, servicesRaw, apptsRaw] = await Promise.all([
-      api.getDoctors(),
-      api.getServices(),
-      api.getAppointments(),
-    ]);
+  const [doctorsRaw, servicesRaw, apptsRaw] = await Promise.all([
+    api.getDoctors(),
+    api.getServices(),
+    api.getAppointments(),
+  ]);
 
-    setDoctors((Array.isArray(doctorsRaw) ? doctorsRaw : []).map(normalizeDoctor).filter(Boolean));
-    setServices((Array.isArray(servicesRaw) ? servicesRaw : []).map(normalizeService).filter(Boolean));
-    setAppointments((Array.isArray(apptsRaw) ? apptsRaw : []).map(normalizeAppointment).filter(Boolean));
+  setDoctors((Array.isArray(doctorsRaw) ? doctorsRaw : []).map(normalizeDoctor).filter(Boolean));
+  setServices((Array.isArray(servicesRaw) ? servicesRaw : []).map(normalizeService).filter(Boolean));
+  setAppointments((Array.isArray(apptsRaw) ? apptsRaw : []).map(normalizeAppointment).filter(Boolean));
 
-    return { mode: "api", ok: true };
-  } catch (e) {
-    console.error(e);
-    showToast(e, "error");
-    setDoctors([]);
-    setServices([]);
-    setAppointments([]);
-    return { mode: "api", ok: false };
-  }
+  return { ok: true };
 }
 
-// ===== INIT AFTER LOGIN =====
+/* =========================
+   INIT AFTER LOGIN
+========================= */
 let _afterLoginInitialized = false;
 
 function initAfterLoginOnce() {
   if (_afterLoginInitialized) return;
   _afterLoginInitialized = true;
+
+  bindNav();
 
   const today = new Date();
   const todayISO = formatDateISO(today);
@@ -497,26 +622,32 @@ function initAfterLoginOnce() {
   if (rangeFromInput) rangeFromInput.value = todayISO;
   if (rangeToInput) rangeToInput.value = todayISO;
 
-  bootstrapData().then((result) => {
-    state.ready = !!result?.ok;
-    refreshSelectsOnly();
-    renderAll();
-    if (result?.ok) showToast("Данные загружены", "success");
-  });
+  bootstrapData()
+    .then((result) => {
+      state.ready = !!result?.ok;
+      refreshSelectsOnly();
+      renderAll();
+      if (result?.ok) showToast("Данные загружены", "success");
+    })
+    .catch((e) => {
+      console.error(e);
+      showToast(e, "error");
+    });
 }
 
 function renderAll() {
   renderDoctors();
   renderServices();
-  // остальные твои рендеры оставляем заглушками (если у тебя ниже есть реальные — они перезапишутся)
-  renderAppointmentsTable?.();
+  renderAppointmentsTable();
   renderDashboard?.();
   renderPatients?.();
   renderReportsDay?.();
   renderReportsMonthYear?.();
 }
 
-// ===== AUTO PRICE =====
+/* =========================
+   AUTO PRICE
+========================= */
 function bindServicePrice(selectEl, priceEl) {
   if (!selectEl || !priceEl) return;
   selectEl.addEventListener("change", () => {
@@ -527,7 +658,9 @@ function bindServicePrice(selectEl, priceEl) {
 }
 bindServicePrice(apptServiceSelect, apptPriceInput);
 
-// ===== CREATE APPOINTMENT (FIXED payload types) =====
+/* =========================
+   CREATE APPOINTMENT
+========================= */
 if (apptForm) {
   apptForm.addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -539,8 +672,7 @@ if (apptForm) {
     const phone = normalizePhone(apptPhoneInput?.value || "");
     const serviceIdStr = String(apptServiceSelect?.value || "").trim();
 
-    // ВАЖНО: backend ждёт bigint/number
-    const serviceId = Number(serviceIdStr);
+    const serviceId = Number(serviceIdStr); // DB uses int/bigint
     const price = Math.trunc(Math.max(0, toNumber(apptPriceInput?.value || 0)));
 
     const statusVisit = (apptStatusVisitSelect?.value || "scheduled").trim();
@@ -561,13 +693,14 @@ if (apptForm) {
       date,
       time,
       doctorId,
-      serviceId, // number!
+      serviceId: Number(serviceId),
       patientName,
       phone,
-      price, // bigint-like integer
+      price,
       statusVisit,
       statusPayment,
       paymentMethod,
+      note: "",
     };
 
     try {
@@ -580,7 +713,8 @@ if (apptForm) {
       if (apptPhoneInput) apptPhoneInput.value = "";
 
       showToast("Запись успешно добавлена", "success");
-      renderAll();
+      renderAppointmentsTable();
+      renderDashboard?.();
     } catch (err) {
       console.error(err);
       showToast(err, "error");
@@ -588,7 +722,9 @@ if (apptForm) {
   });
 }
 
-// ===== DOCTORS CRUD =====
+/* =========================
+   DOCTORS CRUD
+========================= */
 let currentDoctorId = null;
 
 function doctorToApiPayload(payload) {
@@ -699,7 +835,9 @@ doctorForm?.addEventListener("submit", async (e) => {
   }
 });
 
-// ===== SERVICES CRUD =====
+/* =========================
+   SERVICES CRUD
+========================= */
 let currentServiceId = null;
 
 function serviceToApiPayload(payload) {
@@ -712,6 +850,7 @@ function serviceToApiPayload(payload) {
 }
 
 function renderServices() {
+  refreshSelectsOnly();
   if (!servicesTableBody) return;
   const services = getServices();
 
@@ -760,7 +899,6 @@ async function deleteService(id) {
   try {
     await api.deleteService(id);
     setServices(getServices().filter((s) => String(s.id) !== String(id)));
-    refreshSelectsOnly();
     renderAll();
     showToast("Услуга удалена", "info");
   } catch (e) {
@@ -802,7 +940,6 @@ serviceForm?.addEventListener("submit", async (e) => {
     }
 
     closeServiceModal();
-    refreshSelectsOnly();
     renderAll();
   } catch (e2) {
     console.error(e2);
@@ -810,14 +947,51 @@ serviceForm?.addEventListener("submit", async (e) => {
   }
 });
 
-// ===== PLACEHOLDERS (если у тебя есть реальные — они ниже перезапишутся) =====
+/* =========================
+   APPOINTMENTS TABLE (simple)
+========================= */
+function renderAppointmentsTable() {
+  if (!allAppointmentsBody) return;
+
+  const appts = getAppointments().slice().sort((a, b) => {
+    const ad = `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`);
+    return ad;
+  });
+
+  allAppointmentsBody.innerHTML = "";
+
+  appts.forEach((a) => {
+    const doc = getDoctors().find((d) => String(d.id) === String(a.doctorId));
+    const srv = getServices().find((s) => String(s.id) === String(a.serviceId));
+
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${a.date || "-"}</td>
+      <td>${a.time || "-"}</td>
+      <td>${doc?.name || a.doctorName || "-"}</td>
+      <td>${a.patientName || "-"}</td>
+      <td>${a.phone || "-"}</td>
+      <td>${srv?.name || a.serviceName || "-"}</td>
+      <td class="col-amount">${moneyUZS(a.price || 0)}</td>
+      <td>${a.statusVisit || "-"}</td>
+      <td>${a.statusPayment || "-"}</td>
+      <td>${a.paymentMethod || "-"}</td>
+    `;
+    allAppointmentsBody.appendChild(tr);
+  });
+}
+
+/* =========================
+   PLACEHOLDERS (safe)
+========================= */
 function renderDashboard() {}
-function renderAppointmentsTable() {}
 function renderPatients() {}
 function renderReportsDay() {}
 function renderReportsMonthYear() {}
 
-// ===== ESC закрывает модалки =====
+/* =========================
+   ESC closes modals
+========================= */
 function closeAnyModalOnEsc(e) {
   if (e.key !== "Escape") return;
 
@@ -835,5 +1009,7 @@ function closeAnyModalOnEsc(e) {
 }
 document.addEventListener("keydown", closeAnyModalOnEsc);
 
-// ===== START =====
+/* =========================
+   START
+========================= */
 document.addEventListener("DOMContentLoaded", checkAuthOnLoad);

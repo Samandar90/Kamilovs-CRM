@@ -33,7 +33,7 @@ app.use(
       return cb(null, true);
     },
     credentials: false,
-  })
+  }),
 );
 
 /* =========================
@@ -82,7 +82,7 @@ function isUuid(v) {
   return (
     typeof v === "string" &&
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-      v.trim()
+      v.trim(),
     )
   );
 }
@@ -154,7 +154,7 @@ app.get(
   asyncRoute(async (req, res) => {
     const now = await dbNow();
     res.json({ ok: true, status: "server is alive", dbTime: now });
-  })
+  }),
 );
 
 /* =========================
@@ -170,7 +170,7 @@ app.get(
       ORDER BY ordinal_position
     `);
     res.json(r.rows);
-  })
+  }),
 );
 
 app.get(
@@ -183,7 +183,7 @@ app.get(
       ORDER BY ordinal_position
     `);
     res.json(r.rows);
-  })
+  }),
 );
 
 /* =========================
@@ -214,13 +214,18 @@ app.get(
       ORDER BY created_at DESC NULLS LAST
     `);
     res.json(r.rows);
-  })
+  }),
 );
 
 app.post(
   "/api/doctors",
   asyncRoute(async (req, res) => {
-    const { name, speciality = "", percent = 0, active = true } = req.body || {};
+    const {
+      name,
+      speciality = "",
+      percent = 0,
+      active = true,
+    } = req.body || {};
 
     const nm = String(name || "").trim();
     const sp = String(speciality || "").trim();
@@ -249,20 +254,26 @@ app.post(
         telegram_chat_id,
         telegram_link_code
       `,
-      [nm, nm, sp, sp, Math.round(pct), toBool(active, true)]
+      [nm, nm, sp, sp, Math.round(pct), toBool(active, true)],
     );
 
     res.status(201).json(r.rows[0]);
-  })
+  }),
 );
 
 app.put(
   "/api/doctors/:id",
   asyncRoute(async (req, res) => {
     const id = String(req.params.id || "").trim();
-    if (!isUuid(id)) return res.status(400).json({ error: "invalid doctor id" });
+    if (!isUuid(id))
+      return res.status(400).json({ error: "invalid doctor id" });
 
-    const { name, speciality = "", percent = 0, active = true } = req.body || {};
+    const {
+      name,
+      speciality = "",
+      percent = 0,
+      active = true,
+    } = req.body || {};
     const nm = String(name || "").trim();
     const sp = String(speciality || "").trim();
 
@@ -298,23 +309,24 @@ app.put(
         telegram_chat_id,
         telegram_link_code
       `,
-      [nm, nm, sp, sp, Math.round(pct), toBool(active, true), id]
+      [nm, nm, sp, sp, Math.round(pct), toBool(active, true), id],
     );
 
     if (!r.rows[0]) return res.status(404).json({ error: "doctor not found" });
     res.json(r.rows[0]);
-  })
+  }),
 );
 
 app.delete(
   "/api/doctors/:id",
   asyncRoute(async (req, res) => {
     const id = String(req.params.id || "").trim();
-    if (!isUuid(id)) return res.status(400).json({ error: "invalid doctor id" });
+    if (!isUuid(id))
+      return res.status(400).json({ error: "invalid doctor id" });
 
     await pool.query("DELETE FROM doctors WHERE id=$1", [id]);
     res.json({ ok: true });
-  })
+  }),
 );
 
 /* ---------- SERVICES ----------
@@ -324,9 +336,11 @@ app.delete(
 app.get(
   "/api/services",
   asyncRoute(async (req, res) => {
-    const r = await pool.query("SELECT * FROM services ORDER BY created_at DESC NULLS LAST, id ASC");
+    const r = await pool.query(
+      "SELECT * FROM services ORDER BY created_at DESC NULLS LAST, id ASC",
+    );
     res.json(r.rows);
-  })
+  }),
 );
 
 app.post(
@@ -340,11 +354,16 @@ app.post(
       `INSERT INTO services (name, category, price, active)
        VALUES ($1, $2, $3, $4)
        RETURNING *`,
-      [nm, String(category || "").trim(), Number(price) || 0, toBool(active, true)]
+      [
+        nm,
+        String(category || "").trim(),
+        Number(price) || 0,
+        toBool(active, true),
+      ],
     );
 
     res.status(201).json(r.rows[0]);
-  })
+  }),
 );
 
 app.put(
@@ -360,12 +379,18 @@ app.put(
        SET name=$1, category=$2, price=$3, active=$4, updated_at=now()
        WHERE id=$5
        RETURNING *`,
-      [nm, String(category || "").trim(), Number(price) || 0, toBool(active, true), id]
+      [
+        nm,
+        String(category || "").trim(),
+        Number(price) || 0,
+        toBool(active, true),
+        id,
+      ],
     );
 
     if (!r.rows[0]) return res.status(404).json({ error: "service not found" });
     res.json(r.rows[0]);
-  })
+  }),
 );
 
 app.delete(
@@ -374,7 +399,7 @@ app.delete(
     const id = String(req.params.id || "").trim();
     await pool.query("DELETE FROM services WHERE id=$1", [id]);
     res.json({ ok: true });
-  })
+  }),
 );
 
 /* ---------- APPOINTMENTS ----------
@@ -385,166 +410,142 @@ app.delete(
 app.get(
   "/api/appointments",
   asyncRoute(async (req, res) => {
-    const r = await pool.query("SELECT * FROM appointments ORDER BY date ASC, time ASC");
+    const r = await pool.query(
+      "SELECT * FROM appointments ORDER BY date ASC, time ASC",
+    );
     res.json(r.rows);
-  })
+  }),
 );
 
-app.post(
-  "/api/appointments",
-  asyncRoute(async (req, res) => {
+app.post("/api/appointments", async (req, res) => {
+  try {
     const a = req.body || {};
 
-    const date = toStr(pick(a.date, a.date)).trim();
-    const time = toStr(pick(a.time, a.time)).trim();
+    const date = pick(a.date, a.date);
+    const time = pick(a.time, a.time);
+    const doctorId = pick(a.doctorId, a.doctor_id);
+    const serviceId = pick(a.serviceId, a.service_id);
+    const patientName = pick(a.patientName, a.patient_name);
 
-    const doctorId = toStr(pick(a.doctorId, a.doctor_id)).trim();
-    const serviceIdRaw = pick(a.serviceId, a.service_id);
-    const patientName = toStr(pick(a.patientName, a.patient_name)).trim();
-
-    if (!date || !time || !doctorId || serviceIdRaw == null || !patientName) {
+    if (!date || !time || !doctorId || !serviceId || !patientName) {
       return res.status(400).json({
         error: "date, time, doctorId, serviceId, patientName are required",
       });
     }
 
-    if (!isLikelyDate(date)) return res.status(400).json({ error: "date must be YYYY-MM-DD" });
-    if (!isLikelyTime(time)) return res.status(400).json({ error: "time must be HH:MM" });
-
-    if (!isUuid(doctorId)) {
+    const doctorUuid = String(doctorId).trim();
+    if (!isUuid(doctorUuid)) {
       return res.status(400).json({ error: "doctorId must be UUID" });
     }
 
-    // start_at — обязателен
-    const startAt = buildStartAt(date, time);
-    if (!startAt) return res.status(400).json({ error: "cannot build start_at from date/time" });
-
-    const phone = normalizePhone(pick(a.phone, a.phone) || "");
+    const phone = pick(a.phone, a.phone) || "";
     const price = Number(pick(a.price, a.price) || 0);
-    const statusVisit = toStr(pick(a.statusVisit, a.status_visit) || "scheduled");
-    const statusPayment = toStr(pick(a.statusPayment, a.status_payment) || "unpaid");
-    const paymentMethod = toStr(pick(a.paymentMethod, a.payment_method) || "none");
-    const note = toStr(pick(a.note, a.note) || "");
-
-    // service_id: если число — кладём число, иначе строку (на случай uuid)
-    const serviceIdNum = toNumOrNull(serviceIdRaw);
-    const serviceId = serviceIdNum != null ? serviceIdNum : String(serviceIdRaw).trim();
-
-    // ВАЖНО: если в БД service_id INT, а ты пошлёшь UUID — будет ошибка.
-    // Но раньше у тебя ломалось именно Number(serviceId). Я сделал гибко.
+    const statusVisit = pick(a.statusVisit, a.status_visit) || "scheduled";
+    const statusPayment = pick(a.statusPayment, a.status_payment) || "unpaid";
+    const paymentMethod = pick(a.paymentMethod, a.payment_method) || "none";
+    const note = pick(a.note, a.note) || "";
 
     const r = await pool.query(
-      `INSERT INTO appointments
+      `
+      INSERT INTO appointments
         (date, time, start_at, doctor_id, patient_name, phone, service_id, price, status_visit, status_payment, payment_method, note)
-       VALUES
-        ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
-       RETURNING *`,
+      VALUES
+        ($1::date, $2::time, ($1::date + $2::time), $3::uuid, $4, $5, $6::int, $7::numeric, $8, $9, $10, $11)
+      RETURNING *
+      `,
       [
-        date,
-        time,
-        startAt,
-        doctorId,
-        patientName,
-        phone,
-        serviceId,
-        Number.isFinite(price) ? price : 0,
-        statusVisit,
-        statusPayment,
-        paymentMethod,
-        note,
-      ]
+        String(date),
+        String(time),
+        doctorUuid,
+        String(patientName),
+        String(phone),
+        Number(serviceId),
+        price,
+        String(statusVisit),
+        String(statusPayment),
+        String(paymentMethod),
+        String(note),
+      ],
     );
 
     res.status(201).json(r.rows[0]);
-  })
-);
+  } catch (err) {
+    console.error("POST /api/appointments error:", err);
+    res
+      .status(500)
+      .json({ error: "Internal Server Error", detail: err.message });
+  }
+});
 
-app.put(
-  "/api/appointments/:id",
-  asyncRoute(async (req, res) => {
-    const id = String(req.params.id || "").trim();
+app.put("/api/appointments/:id", async (req, res) => {
+  try {
+    const id = req.params.id;
     const p = req.body || {};
 
-    // берём то, что прислали (частично)
-    const date = p.date != null ? String(p.date).trim() : null;
-    const time = p.time != null ? String(p.time).trim() : null;
-
-    const doctorIdRaw = pick(p.doctorId, p.doctor_id);
-    const serviceIdRaw = pick(p.serviceId, p.service_id);
+    const date = pick(p.date, p.date);
+    const time = pick(p.time, p.time);
+    const doctorId = pick(p.doctorId, p.doctor_id);
+    const serviceId = pick(p.serviceId, p.service_id);
     const patientName = pick(p.patientName, p.patient_name);
-    const phone = p.phone;
-    const price = p.price;
+    const phone = pick(p.phone, p.phone);
+    const price = pick(p.price, p.price);
     const statusVisit = pick(p.statusVisit, p.status_visit);
     const statusPayment = pick(p.statusPayment, p.status_payment);
     const paymentMethod = pick(p.paymentMethod, p.payment_method);
-    const note = p.note;
+    const note = pick(p.note, p.note);
 
-    const doctorId =
-      doctorIdRaw != null ? String(doctorIdRaw).trim() : null;
-
-    if (doctorId && !isUuid(doctorId)) {
+    const doctorUuid = doctorId != null ? String(doctorId).trim() : null;
+    if (doctorUuid && !isUuid(doctorUuid)) {
       return res.status(400).json({ error: "doctorId must be UUID" });
     }
 
-    // если меняют date/time — пересчитаем start_at
-    // также поддерживаем startAt/start_at если фронт прислал
-    const startAtRaw = pick(p.startAt, p.start_at);
-    let startAt =
-      startAtRaw != null ? String(startAtRaw).trim() : null;
-
-    // если startAt не прислали, но прислали date/time — построим
-    if (!startAt && date && time) {
-      if (!isLikelyDate(date)) return res.status(400).json({ error: "date must be YYYY-MM-DD" });
-      if (!isLikelyTime(time)) return res.status(400).json({ error: "time must be HH:MM" });
-      startAt = buildStartAt(date, time);
-      if (!startAt) return res.status(400).json({ error: "cannot build start_at from date/time" });
-    }
-
-    // service_id гибко
-    let serviceId = null;
-    if (serviceIdRaw != null) {
-      const n = toNumOrNull(serviceIdRaw);
-      serviceId = n != null ? n : String(serviceIdRaw).trim();
-    }
-
     const r = await pool.query(
-      `UPDATE appointments SET
-        date = COALESCE($1, date),
-        time = COALESCE($2, time),
-        start_at = COALESCE($3, start_at),
-        doctor_id = COALESCE($4, doctor_id),
-        patient_name = COALESCE($5, patient_name),
-        phone = COALESCE($6, phone),
-        service_id = COALESCE($7, service_id),
-        price = COALESCE($8, price),
-        status_visit = COALESCE($9, status_visit),
-        status_payment = COALESCE($10, status_payment),
-        payment_method = COALESCE($11, payment_method),
-        note = COALESCE($12, note),
+      `
+      UPDATE appointments SET
+        date = COALESCE($1::date, date),
+        time = COALESCE($2::time, time),
+        start_at = (
+          COALESCE($1::date, date) + COALESCE($2::time, time)
+        ),
+        doctor_id = COALESCE($3::uuid, doctor_id),
+        patient_name = COALESCE($4, patient_name),
+        phone = COALESCE($5, phone),
+        service_id = COALESCE($6::int, service_id),
+        price = COALESCE($7::numeric, price),
+        status_visit = COALESCE($8, status_visit),
+        status_payment = COALESCE($9, status_payment),
+        payment_method = COALESCE($10, payment_method),
+        note = COALESCE($11, note),
         updated_at = now()
-       WHERE id=$13
-       RETURNING *`,
+      WHERE id=$12
+      RETURNING *
+      `,
       [
         date ?? null,
         time ?? null,
-        startAt ?? null,
-        doctorId ?? null,
+        doctorUuid ?? null,
         patientName ?? null,
-        phone != null ? normalizePhone(phone) : null,
-        serviceId ?? null,
+        phone ?? null,
+        serviceId != null ? Number(serviceId) : null,
         price != null ? Number(price) : null,
         statusVisit ?? null,
         statusPayment ?? null,
         paymentMethod ?? null,
         note ?? null,
         id,
-      ]
+      ],
     );
 
-    if (!r.rows[0]) return res.status(404).json({ error: "appointment not found" });
+    if (!r.rows[0])
+      return res.status(404).json({ error: "appointment not found" });
     res.json(r.rows[0]);
-  })
-);
+  } catch (err) {
+    console.error("PUT /api/appointments error:", err);
+    res
+      .status(500)
+      .json({ error: "Internal Server Error", detail: err.message });
+  }
+});
 
 app.delete(
   "/api/appointments/:id",
@@ -552,7 +553,7 @@ app.delete(
     const id = String(req.params.id || "").trim();
     await pool.query("DELETE FROM appointments WHERE id=$1", [id]);
     res.json({ ok: true });
-  })
+  }),
 );
 
 /* =========================
@@ -569,10 +570,7 @@ app.use((err, req, res, next) => {
   console.error("UNHANDLED ERROR:", err);
 
   // pg errors часто содержат detail
-  const msg =
-    err?.message ||
-    err?.detail ||
-    "Internal Server Error";
+  const msg = err?.message || err?.detail || "Internal Server Error";
 
   res.status(500).json({
     error: "Internal Server Error",

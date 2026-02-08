@@ -77,6 +77,33 @@ function moneyUZS(n) {
 }
 
 // ====== API HELPERS ======
+function extractApiErrorMessage(data, status) {
+  if (!data) return `API error ${status}`;
+
+  if (typeof data === "string") return data;
+
+  // популярные поля
+  if (typeof data.detail === "string") return data.detail;
+  if (typeof data.message === "string") return data.message;
+  if (typeof data.title === "string") return data.title;
+
+  // формат { error: "..." }
+  if (typeof data.error === "string") return data.error;
+
+  // формат { ok:false, error:{ message, details } }
+  if (data.error && typeof data.error === "object") {
+    if (typeof data.error.message === "string") return data.error.message;
+    if (typeof data.error.details === "string") return data.error.details;
+  }
+
+  // крайний случай
+  try {
+    return JSON.stringify(data);
+  } catch {
+    return `API error ${status}`;
+  }
+}
+
 async function apiFetch(
   path,
   { method = "GET", body, headers = {}, timeoutMs = 12000 } = {}
@@ -103,34 +130,34 @@ async function apiFetch(
       signal: controller.signal,
     });
 
-    const contentType = (res.headers.get("content-type") || "").toLowerCase();
     const text = await res.text();
 
+    // пробуем распарсить JSON всегда, даже если content-type неверный
     let data = null;
     if (text) {
-      if (contentType.includes("application/json")) {
-        try {
-          data = JSON.parse(text);
-        } catch {
-          data = text;
-        }
-      } else {
-        try {
-          data = JSON.parse(text);
-        } catch {
-          data = text;
-        }
+      try {
+        data = JSON.parse(text);
+      } catch {
+        data = text;
       }
     }
 
+    // HTTP ошибка
     if (!res.ok) {
-      const msg =
-        (data && (data.detail || data.message || data.error || data.title)) ||
-        (typeof data === "string" ? data : "") ||
-        `API error ${res.status}`;
-      throw new Error(msg);
+      throw new Error(extractApiErrorMessage(data, res.status));
     }
 
+    // бывает что сервер возвращает ok:false но HTTP 200
+    if (data && typeof data === "object" && data.ok === false) {
+      throw new Error(extractApiErrorMessage(data, res.status));
+    }
+
+    // если сервер в формате { ok:true, data: ... } — разворачиваем
+    if (data && typeof data === "object" && data.ok === true && "data" in data) {
+      return data.data;
+    }
+
+    // иначе возвращаем как есть (старый формат массив/объект)
     return data;
   } catch (e) {
     if (e && e.name === "AbortError") throw new Error("Таймаут запроса к API");
@@ -140,111 +167,6 @@ async function apiFetch(
   }
 }
 
-async function apiHealth() {
-  try {
-    const r = await apiFetch("/health", { timeoutMs: 7000 });
-    if (!r) return false;
-    if (r.ok === true) return true;
-    if (typeof r.status === "string" && r.status.toLowerCase().includes("alive"))
-      return true;
-    return false;
-  } catch {
-    return false;
-  }
-}
-
-// ===== DEMO =====
-const DEMO_USER = { username: "admin", password: "samandar014" };
-
-const DEMO_DOCTORS = [
-  { id: "1", name: "Д-р Ахмедов", speciality: "Терапевт", percent: 40, active: true },
-  { id: "2", name: "Д-р Камилов", speciality: "УЗИ", percent: 35, active: true },
-  { id: "3", name: "Д-р Саидова", speciality: "Кардиолог", percent: 45, active: true },
-];
-
-const DEMO_SERVICES = [
-  { id: "1", name: "Первичная консультация", category: "Консультации", price: 200000, active: true },
-  { id: "2", name: "УЗИ брюшной полости", category: "УЗИ", price: 300000, active: true },
-  { id: "3", name: "Контрольный приём", category: "Консультации", price: 150000, active: true },
-];
-
-// ===== STATE =====
-const state = {
-  doctors: [],
-  services: [],
-  appointments: [],
-  archivedPatients: new Set(),
-  ready: false,
-};
-
-let currentEditApptId = null;
-let currentDoctorId = null;
-let currentServiceId = null;
-let currentPatientKey = null;
-
-// ====== NORMALIZE (API -> UI) ======
-function normalizeDoctor(d) {
-  if (!d) return null;
-  return {
-    id: String(d.id ?? ""),
-    name: d.name ?? d.full_name ?? "",
-    speciality: d.speciality ?? d.specialty ?? "",
-    percent: toNumber(d.percent, 0),
-    // ✅ ВАЖНО: если active нет/NULL — считаем активным
-    active: d.active !== false,
-  };
-}
-
-function normalizeService(s) {
-  if (!s) return null;
-  return {
-    id: String(s.id ?? ""),
-    name: s.name ?? "",
-    category: s.category ?? "",
-    price: toNumber(s.price, 0),
-    // ✅ ВАЖНО: если active нет/NULL — считаем активным
-    active: s.active !== false,
-  };
-}
-
-function normalizeAppointment(a) {
-  if (!a) return null;
-  return {
-    id: String(a.id ?? ""),
-    date: a.date ?? "",
-    time: a.time ?? "",
-    doctorId: String(a.doctorId ?? a.doctor_id ?? ""),
-    serviceId: String(a.serviceId ?? a.service_id ?? ""),
-    patientName: a.patientName ?? a.patient_name ?? "",
-    phone: a.phone ?? "",
-    price: toNumber(a.price, 0),
-    statusVisit: a.statusVisit ?? a.status_visit ?? "scheduled",
-    statusPayment: a.statusPayment ?? a.status_payment ?? "unpaid",
-    paymentMethod: a.paymentMethod ?? a.payment_method ?? "none",
-    note: a.note ?? "",
-  };
-}
-
-// ===== API METHODS =====
-const api = {
-  getDoctors: () => apiFetch("/api/doctors"),
-  createDoctor: (payload) => apiFetch("/api/doctors", { method: "POST", body: payload }),
-  updateDoctor: (id, payload) => apiFetch(`/api/doctors/${id}`, { method: "PUT", body: payload }),
-  deleteDoctor: (id) => apiFetch(`/api/doctors/${id}`, { method: "DELETE" }),
-
-  getServices: () => apiFetch("/api/services"),
-  createService: (payload) => apiFetch("/api/services", { method: "POST", body: payload }),
-  updateService: (id, payload) => apiFetch(`/api/services/${id}`, { method: "PUT", body: payload }),
-  deleteService: (id) => apiFetch(`/api/services/${id}`, { method: "DELETE" }),
-
-  getAppointments: (params = {}) => {
-    const qs = new URLSearchParams(params).toString();
-    return apiFetch(`/api/appointments${qs ? `?${qs}` : ""}`);
-  },
-  createAppointment: (payload) => apiFetch("/api/appointments", { method: "POST", body: payload }),
-  updateAppointment: (id, payload) => apiFetch(`/api/appointments/${id}`, { method: "PUT", body: payload }),
-  deleteAppointment: (id) => apiFetch(`/api/appointments/${id}`, { method: "DELETE" }),
-};
 
 // ===== ARCHIVE =====
 function loadArchivedPatientsSetLocal() {

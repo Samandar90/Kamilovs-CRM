@@ -1,0 +1,12 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// SQL-first backend: schema source of truth is in
+// packages/database/schema.sql and services/api/src/sql/*.sql.
+// Prisma models are intentionally omitted for this flow to avoid dual schema definitions.

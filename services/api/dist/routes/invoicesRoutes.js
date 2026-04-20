@@ -1,0 +1,17 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.invoicesRouter = void 0;
+const express_1 = require("express");
+const asyncHandler_1 = require("../middleware/asyncHandler");
+const invoicesController_1 = require("../controllers/invoicesController");
+const invoicesValidators_1 = require("../validators/invoicesValidators");
+const authMiddleware_1 = require("../middleware/authMiddleware");
+const doctorFinanceBlockMiddleware_1 = require("../middleware/doctorFinanceBlockMiddleware");
+const permissionMiddleware_1 = require("../middleware/permissionMiddleware");
+const router = (0, express_1.Router)();
+exports.invoicesRouter = router;
+router.get("/", authMiddleware_1.requireAuth, doctorFinanceBlockMiddleware_1.requireFinancialPortalAccess, (0, permissionMiddleware_1.checkPermission)("invoices", "read"), (0, asyncHandler_1.asyncHandler)(invoicesController_1.listInvoicesController));
+router.get("/:id", authMiddleware_1.requireAuth, doctorFinanceBlockMiddleware_1.requireFinancialPortalAccess, (0, permissionMiddleware_1.checkPermission)("invoices", "read"), invoicesValidators_1.validateInvoiceIdParam, (0, asyncHandler_1.asyncHandler)(invoicesController_1.getInvoiceByIdController));
+router.post("/", authMiddleware_1.requireAuth, doctorFinanceBlockMiddleware_1.requireFinancialPortalAccess, (0, permissionMiddleware_1.checkPermission)("invoices", "create"), invoicesValidators_1.validateCreateInvoice, (0, asyncHandler_1.asyncHandler)(invoicesController_1.createInvoiceController));
+router.put("/:id", authMiddleware_1.requireAuth, doctorFinanceBlockMiddleware_1.requireFinancialPortalAccess, (0, permissionMiddleware_1.checkPermission)("invoices", "update"), invoicesValidators_1.validateInvoiceIdParam, invoicesValidators_1.validateUpdateInvoice, (0, asyncHandler_1.asyncHandler)(invoicesController_1.updateInvoiceController));
+router.delete("/:id", authMiddleware_1.requireAuth, doctorFinanceBlockMiddleware_1.requireFinancialPortalAccess, (0, permissionMiddleware_1.checkPermission)("invoices", "delete"), invoicesValidators_1.validateInvoiceIdParam, (0, asyncHandler_1.asyncHandler)(invoicesController_1.deleteInvoiceController));

@@ -1,0 +1,34 @@
+import type {
+  Appointment,
+  AppointmentCreateInput,
+  AppointmentFilters,
+  AppointmentUpdateInput,
+} from "./coreTypes";
+
+export interface IAppointmentsRepository {
+  findAll(filters?: AppointmentFilters): Promise<Appointment[]>;
+  findById(id: number): Promise<Appointment | null>;
+  create(data: AppointmentCreateInput): Promise<Appointment>;
+  update(id: number, data: AppointmentUpdateInput): Promise<Appointment | null>;
+  updatePrice(id: number, price: number): Promise<Appointment | null>;
+  cancel(
+    id: number,
+    cancelReason: string | null,
+    cancelledBy: number
+  ): Promise<Appointment | null>;
+  delete(id: number): Promise<boolean>;
+  findConflicting(
+    doctorId: number,
+    startAt: string,
+    endAt: string,
+    excludeId?: number
+  ): Promise<boolean>;
+  patientExists(id: number): Promise<boolean>;
+  doctorExists(id: number): Promise<boolean>;
+  serviceExists(id: number): Promise<boolean>;
+  /** Service row exists, not soft-deleted, and active (for new/changed bookings). */
+  isServiceActive(serviceId: number): Promise<boolean>;
+  getServiceDuration(serviceId: number): Promise<number | null>;
+  getServicePrice(serviceId: number): Promise<number | null>;
+  isServiceAssignedToDoctor(serviceId: number, doctorId: number): Promise<boolean>;
+}

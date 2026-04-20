@@ -1,0 +1,222 @@
+@import "tailwindcss";
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+}
+
+body {
+  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  background: #f8fafc;
+  color: #0f172a;
+}
+
+/* —— Linear / Stripe–style utilities —— */
+.transition-app {
+  transition: all 0.2s ease;
+}
+
+.card {
+  @apply rounded-xl border border-gray-200 bg-white p-5;
+}
+
+.card-hover {
+  @apply transition-all duration-200 ease-out hover:shadow-md;
+}
+
+.input {
+  @apply w-full border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500/40;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.button-primary {
+  @apply inline-flex items-center justify-center rounded-xl border border-emerald-600 bg-emerald-600 px-4 py-2 text-sm font-medium text-white shadow-sm;
+  transition: background-color 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+}
+
+.button-primary:hover {
+  @apply border-emerald-500 bg-emerald-500;
+}
+
+.button-primary:active {
+  transform: scale(0.99);
+}
+
+.button-ghost {
+  @apply inline-flex items-center justify-center rounded-xl border border-transparent bg-transparent px-3 py-2 text-sm font-medium text-slate-700;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.button-ghost:hover {
+  @apply bg-slate-100 text-slate-900;
+}
+
+.crm-btn-interactive {
+  transition: background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, transform 0.2s ease;
+}
+
+.crm-sidebar-enter {
+  animation: crm-fade-in 180ms ease both;
+}
+
+.dashboard-card-enter {
+  animation: crm-fade-in 220ms ease both;
+}
+
+.crm-page-enter {
+  animation: crm-page-enter 200ms ease-out both;
+}
+
+.crm-stat-card-enter {
+  animation: crm-stat-card-enter 220ms ease-out both;
+}
+
+.hover-scale-subtle:hover {
+  transform: scale(1.01);
+}
+
+@keyframes crm-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes crm-page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes crm-stat-card-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes modal-pop-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes modal-backdrop-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes modal-dialog-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.modal-backdrop-enter {
+  animation: modal-backdrop-in 0.2s ease-out both;
+}
+
+.modal-dialog-enter {
+  animation: modal-dialog-in 0.22s ease-out both;
+}
+
+.chat-panel-enter {
+  animation: crm-fade-in 0.28s ease both;
+}
+
+.crm-dropdown-enter {
+  animation: crm-dropdown-enter 0.16s ease-out both;
+  transform-origin: top;
+}
+
+@keyframes crm-dropdown-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.98) translateY(-2px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.crm-data-table tbody tr {
+  transition: background-color 150ms ease-out;
+}
+
+.crm-data-table tbody tr:hover {
+  background-color: #f9fafb;
+}
+
+.crm-filters-shell input,
+.crm-filters-shell select {
+  transition: transform 160ms ease-out, opacity 160ms ease-out, border-color 160ms ease-out, box-shadow 160ms ease-out;
+}
+
+.crm-filters-shell input:focus,
+.crm-filters-shell select:focus {
+  transform: scale(1.01);
+}
+
+/* AI Assistant: только opacity, без transform (стабильный композитинг) */
+@keyframes ai-assistant-msg-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.ai-assistant-msg-enter {
+  animation: ai-assistant-msg-fade 0.22s ease-out both;
+}
+
+/*
+ * Поле пароля на логине: одна кастомная кнопка «глаз» (LoginPage).
+ * Скрываем нативные элементы, чтобы не было второго «глаза» (Edge / WebKit).
+ */
+.crm-login-password-field::-ms-reveal,
+.crm-login-password-field::-ms-clear {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.crm-login-password-field::-webkit-credentials-auto-fill-button {
+  visibility: hidden;
+  pointer-events: none;
+  margin: 0;
+  width: 0;
+  max-width: 0;
+}

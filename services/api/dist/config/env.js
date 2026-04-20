@@ -1,0 +1,85 @@
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.env = void 0;
+const dotenv_1 = __importDefault(require("dotenv"));
+// Ensure local .env values override existing environment variables.
+const path_1 = __importDefault(require("path"));
+// Load .env from process cwd (services/api when using `npm run dev` / `npm start`)
+// so PORT and DATABASE_URL always apply; __dirname can point at ts-node temp dirs.
+const dotenvPath = path_1.default.resolve(process.cwd(), ".env");
+dotenv_1.default.config({ override: true, path: dotenvPath });
+const jwtSecretRaw = process.env.JWT_SECRET;
+if (!jwtSecretRaw || jwtSecretRaw.trim() === "") {
+    throw new Error("JWT_SECRET environment variable is required");
+}
+const jwtSecret = jwtSecretRaw.trim();
+const nodeEnv = process.env.NODE_ENV || "development";
+const isProduction = nodeEnv === "production";
+const defaultCorsOrigins = "http://localhost:5173";
+const corsOriginsEnv = process.env.CORS_ORIGINS?.trim();
+if (isProduction && !corsOriginsEnv) {
+    throw new Error("CORS_ORIGINS is required when NODE_ENV=production (comma-separated allowed browser origins, e.g. https://app.example.com)");
+}
+const corsOrigins = (isProduction ? corsOriginsEnv : corsOriginsEnv || defaultCorsOrigins)
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+if (isProduction && corsOrigins.length === 0) {
+    throw new Error("CORS_ORIGINS must include at least one non-empty origin");
+}
+if (isProduction && jwtSecret.length < 32) {
+    throw new Error("JWT_SECRET must be at least 32 characters when NODE_ENV=production");
+}
+/**
+ * Opt-in only (and never when NODE_ENV=production): PaymentsService may auto-open a zero-balance shift.
+ * Set CASH_REGISTER_AUTO_OPEN_DEV=true for local PostgreSQL smoke tests.
+ */
+const cashRegisterAutoOpenDev = process.env.NODE_ENV !== "production" &&
+    process.env.CASH_REGISTER_AUTO_OPEN_DEV === "true";
+/**
+ * IANA timezone for report date boundaries and date_trunc buckets (payments, appointments).
+ * Default Asia/Tashkent matches typical UZS clinic operations (UTC+5, no DST).
+ */
+const reportsTimezone = (process.env.REPORTS_TIMEZONE || "Asia/Tashkent").trim() || "Asia/Tashkent";
+/**
+ * In-memory mock repositories: opt-in only via DATA_PROVIDER=mock (never default in production).
+ * Default is PostgreSQL for production-like runs.
+ */
+const dataProvider = process.env.DATA_PROVIDER === "mock" ? "mock" : "postgres";
+if (isProduction && dataProvider === "mock") {
+    throw new Error("DATA_PROVIDER=mock is not allowed when NODE_ENV=production");
+}
+if (isProduction && (!process.env.DATABASE_URL || !process.env.DATABASE_URL.trim())) {
+    throw new Error("DATABASE_URL is required when NODE_ENV=production");
+}
+/** Display name on internal receipts and optional API responses (not fiscal). */
+const clinicDisplayName = (process.env.CLINIC_NAME || "Клиника").trim() || "Клиника";
+const clinicReceiptFooter = (process.env.CLINIC_RECEIPT_FOOTER || "Внутренний документ · не является фискальным чеком").trim() ||
+    "Внутренний документ · не является фискальным чеком";
+/** Dev-only маршруты (например POST /api/dev/create-admin) — никогда в production. */
+const allowDevBootstrap = !isProduction;
+/** Логировать `values` у `dbPool.query` (найти 22P02 и т.п.). Только локально: DEBUG_SQL_PARAMS=1, не production. */
+const debugSqlParams = !isProduction && process.env.DEBUG_SQL_PARAMS?.trim() === "1";
+/** POST /api/invoices: req.body, payload, INSERT values — только DEBUG_INVOICE_CREATE=1, не production. */
+const debugInvoiceCreate = !isProduction && process.env.DEBUG_INVOICE_CREATE?.trim() === "1";
+exports.env = {
+    nodeEnv,
+    isProduction,
+    allowDevBootstrap,
+    port: Number(process.env.PORT) || 4000,
+    dataProvider,
+    jwtSecret,
+    corsOrigins,
+    databaseUrl: process.env.DATABASE_URL?.trim() ||
+        "postgresql://postgres:postgres@localhost:5432/clinic_crm",
+    /** See CASH_REGISTER_AUTO_OPEN_DEV — never enable in production. */
+    cashRegisterAutoOpenDev,
+    reportsTimezone,
+    clinicDisplayName,
+    clinicReceiptFooter,
+    debugSqlParams,
+    debugInvoiceCreate,
+};

@@ -1,0 +1,12 @@
+{
+  "devDependencies": {
+    "autoprefixer": "^10.4.27",
+    "postcss": "^8.5.8",
+    "prisma": "^6.19.2",
+    "tailwindcss": "^4.2.1"
+  },
+  "dependencies": {
+    "@prisma/client": "^7.5.0",
+    "framer-motion": "^12.38.0"
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "name": "clinic-crm-api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "dev": "node scripts/ensureTempCommonjs.js && ts-node-dev -r tsconfig-paths/register --respawn --transpile-only --cache-directory ./.ts-node-dev-cache src/server.ts",
+    "build": "tsc && tsc-alias -p tsconfig.json",
+    "start": "node dist/server.js",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "db:migrate": "node scripts/db-migrate.cjs",
+    "db:seed:dev": "node scripts/db-seed-dev.cjs"
+  },
+  "dependencies": {
+    "bcrypt": "^6.0.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.6.1",
+    "express": "^4.21.2",
+    "express-rate-limit": "^8.3.2",
+    "jsonwebtoken": "^9.0.3",
+    "morgan": "^1.10.0",
+    "openai": "^6.34.0",
+    "pg": "^8.20.0"
+  },
+  "devDependencies": {
+    "@types/bcrypt": "^6.0.0",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/morgan": "^1.9.9",
+    "@types/node": "^22.9.0",
+    "@types/pg": "^8.18.0",
+    "ts-node-dev": "^2.0.0",
+    "tsc-alias": "^1.8.16",
+    "tsconfig-paths": "^4.2.0",
+    "typescript": "^5.6.3",
+    "vitest": "^3.2.4"
+  }
+}

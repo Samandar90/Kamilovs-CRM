@@ -1,6 +1,6 @@
 import React from "react";
 import { motion } from "framer-motion";
-import { Activity, ChartLine, FileText, Receipt, Wallet } from "lucide-react";
+import { Activity, LineChart, FileText, Receipt, Wallet } from "lucide-react";
 import { formatSum } from "../../../utils/formatMoney";
 
 type KpiItem = {
@@ -19,7 +19,7 @@ const pctLabel = (v: number): string => `${v > 0 ? "+" : ""}${Math.round(v)}%`;
 export const ReportsKPI: React.FC<Props> = ({ items, loading }) => {
   const iconByTitle: Record<string, React.ReactNode> = {
     "Выручка": <Wallet className="h-4 w-4 text-emerald-600" />,
-    "Рост": <ChartLine className="h-4 w-4 text-violet-600" />,
+    "Рост": <LineChart className="h-4 w-4 text-violet-600" />,
     "Пациенты": <Activity className="h-4 w-4 text-sky-600" />,
     "Счета": <FileText className="h-4 w-4 text-amber-600" />,
     "Средний чек": <Receipt className="h-4 w-4 text-rose-600" />,

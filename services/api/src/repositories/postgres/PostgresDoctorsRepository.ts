@@ -12,6 +12,8 @@ type DoctorDbRow = {
   full_name: string;
   specialty: string;
   percent: string | number;
+  phone: string | null;
+  birth_date: string | Date | null;
   active: boolean;
   created_at: Date | string;
 };
@@ -31,6 +33,12 @@ const mapRow = (row: DoctorDbRow, serviceIds: number[]): Doctor => ({
   name: row.full_name.trim(),
   speciality: row.specialty.trim(),
   percent: num(row.percent),
+  phone: row.phone,
+  birth_date: row.birth_date
+    ? (row.birth_date instanceof Date
+        ? row.birth_date.toISOString().slice(0, 10)
+        : String(row.birth_date).slice(0, 10))
+    : null,
   active: row.active !== false,
   serviceIds,
   createdAt: toIso(row.created_at),
@@ -76,6 +84,8 @@ export class PostgresDoctorsRepository implements IDoctorsRepository {
           d.full_name,
           d.specialty,
           d.percent,
+          d.phone,
+          d.birth_date,
           d.active,
           d.created_at,
           COALESCE(
@@ -91,6 +101,8 @@ export class PostgresDoctorsRepository implements IDoctorsRepository {
           d.full_name,
           d.specialty,
           d.percent,
+          d.phone,
+          d.birth_date,
           d.active,
           d.created_at
         ORDER BY d.full_name ASC
@@ -112,6 +124,8 @@ export class PostgresDoctorsRepository implements IDoctorsRepository {
           full_name,
           specialty,
           percent,
+          phone,
+          birth_date,
           active,
           created_at
         FROM doctors
@@ -138,17 +152,19 @@ export class PostgresDoctorsRepository implements IDoctorsRepository {
 
       const insertResult = await client.query<DoctorDbRow>(
         `
-          INSERT INTO doctors (full_name, specialty, percent, active)
-          VALUES ($1, $2, $3, $4)
+          INSERT INTO doctors (full_name, specialty, percent, phone, birth_date, active)
+          VALUES ($1, $2, $3, $4, $5::date, $6)
           RETURNING
             id,
             full_name,
             specialty,
             percent,
+            phone,
+            birth_date,
             active,
             created_at
         `,
-        [fullName, spec, data.percent, data.active]
+        [fullName, spec, data.percent, data.phone ?? null, data.birth_date ?? null, data.active]
       );
 
       const row = insertResult.rows[0];
@@ -172,7 +188,7 @@ export class PostgresDoctorsRepository implements IDoctorsRepository {
 
       const existing = await client.query<DoctorDbRow>(
         `
-          SELECT id, full_name, specialty, percent, active, created_at
+          SELECT id, full_name, specialty, percent, phone, birth_date, active, created_at
           FROM doctors
           WHERE id = $1
           FOR UPDATE
@@ -185,7 +201,7 @@ export class PostgresDoctorsRepository implements IDoctorsRepository {
       }
 
       const setClauses: string[] = [];
-      const values: Array<string | number | boolean> = [];
+      const values: Array<string | number | boolean | null> = [];
 
       if (data.name !== undefined) {
         values.push(data.name.trim());
@@ -200,6 +216,16 @@ export class PostgresDoctorsRepository implements IDoctorsRepository {
       if (data.percent !== undefined) {
         values.push(data.percent);
         setClauses.push(`percent = $${values.length}`);
+      }
+
+      if (data.phone !== undefined) {
+        values.push(data.phone);
+        setClauses.push(`phone = $${values.length}`);
+      }
+
+      if (data.birth_date !== undefined) {
+        values.push(data.birth_date);
+        setClauses.push(`birth_date = $${values.length}::date`);
       }
 
       if (data.active !== undefined) {
@@ -219,6 +245,8 @@ export class PostgresDoctorsRepository implements IDoctorsRepository {
               full_name,
               specialty,
               percent,
+              phone,
+              birth_date,
               active,
               created_at
           `,
@@ -240,7 +268,7 @@ export class PostgresDoctorsRepository implements IDoctorsRepository {
 
       const finalRow = await client.query<DoctorDbRow>(
         `
-          SELECT id, full_name, specialty, percent, active, created_at
+          SELECT id, full_name, specialty, percent, phone, birth_date, active, created_at
           FROM doctors
           WHERE id = $1
         `,

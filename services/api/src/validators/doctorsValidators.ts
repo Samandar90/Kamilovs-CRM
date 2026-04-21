@@ -50,6 +50,27 @@ const normalizeDoctorPayload = (body: Record<string, unknown>): void => {
       body.percent = p;
     }
   }
+  if (body.birthDate != null && body.birth_date == null) {
+    body.birth_date = body.birthDate;
+  }
+};
+
+const parseOptionalPhone = (value: unknown): string | null | undefined => {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed === "" ? null : trimmed;
+};
+
+const parseOptionalBirthDate = (value: unknown): string | null | undefined => {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  if (trimmed === "") return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return undefined;
+  return trimmed;
 };
 
 export const validateDoctorIdParam = (req: Request, _res: Response, next: NextFunction) => {
@@ -64,7 +85,7 @@ export const validateCreateDoctor = (req: Request, _res: Response, next: NextFun
   normalizeDoctorPayload(body);
   req.body = body;
 
-  const { name, speciality, percent, active, serviceIds } = body;
+  const { name, speciality, percent, active, serviceIds, phone, birth_date } = body;
 
   if (typeof name !== "string" || name.trim() === "") {
     throw new ApiError(
@@ -90,6 +111,18 @@ export const validateCreateDoctor = (req: Request, _res: Response, next: NextFun
     throw new ApiError(400, "Field 'active' must be a boolean");
   }
 
+  const normalizedPhone = parseOptionalPhone(phone);
+  if (normalizedPhone === undefined) {
+    throw new ApiError(400, "Field 'phone' must be a string, null or empty");
+  }
+  body.phone = normalizedPhone;
+
+  const normalizedBirthDate = parseOptionalBirthDate(birth_date);
+  if (normalizedBirthDate === undefined) {
+    throw new ApiError(400, "Field 'birth_date' must be YYYY-MM-DD, null or empty");
+  }
+  body.birth_date = normalizedBirthDate;
+
   if (serviceIds !== undefined) {
     validateServiceIds(serviceIds);
   }
@@ -102,7 +135,8 @@ export const validateUpdateDoctor = (req: Request, _res: Response, next: NextFun
   normalizeDoctorPayload(body);
   req.body = body;
 
-  const { name, fullName, speciality, specialty, percent, active, serviceIds } = body;
+  const { name, fullName, speciality, specialty, percent, active, serviceIds, phone, birth_date } =
+    body;
 
   if (name !== undefined && (typeof name !== "string" || name.trim() === "")) {
     throw new ApiError(400, "Field 'name' must be a non-empty string");
@@ -130,6 +164,22 @@ export const validateUpdateDoctor = (req: Request, _res: Response, next: NextFun
     throw new ApiError(400, "Field 'active' must be a boolean");
   }
 
+  if (phone !== undefined) {
+    const normalizedPhone = parseOptionalPhone(phone);
+    if (normalizedPhone === undefined) {
+      throw new ApiError(400, "Field 'phone' must be a string, null or empty");
+    }
+    body.phone = normalizedPhone;
+  }
+
+  if (birth_date !== undefined) {
+    const normalizedBirthDate = parseOptionalBirthDate(birth_date);
+    if (normalizedBirthDate === undefined) {
+      throw new ApiError(400, "Field 'birth_date' must be YYYY-MM-DD, null or empty");
+    }
+    body.birth_date = normalizedBirthDate;
+  }
+
   if (serviceIds !== undefined) {
     validateServiceIds(serviceIds);
   }
@@ -141,7 +191,9 @@ export const validateUpdateDoctor = (req: Request, _res: Response, next: NextFun
     specialty !== undefined ||
     percent !== undefined ||
     active !== undefined ||
-    serviceIds !== undefined;
+    serviceIds !== undefined ||
+    phone !== undefined ||
+    birth_date !== undefined;
 
   if (!hasAnyField) {
     throw new ApiError(400, "At least one field must be provided for update");

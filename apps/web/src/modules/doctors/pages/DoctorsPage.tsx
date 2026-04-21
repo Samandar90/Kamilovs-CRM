@@ -12,6 +12,8 @@ type Doctor = {
   name: string;
   speciality: string;
   percent: number;
+  phone?: string | null;
+  birth_date?: string | null;
   active: boolean;
   serviceIds?: number[];
 };
@@ -25,6 +27,8 @@ type DoctorFormState = {
   name: string;
   speciality: string;
   percent: string;
+  phone: string;
+  birthDate: string;
   active: boolean;
   serviceIds: number[];
 };
@@ -33,6 +37,8 @@ const initialFormState: DoctorFormState = {
   name: "",
   speciality: "",
   percent: "0",
+  phone: "",
+  birthDate: "",
   active: true,
   serviceIds: [],
 };
@@ -99,6 +105,8 @@ export const DoctorsPage: React.FC = () => {
       name: doctor.name,
       speciality: doctor.speciality,
       percent: String(doctor.percent),
+      phone: doctor.phone ?? "",
+      birthDate: doctor.birth_date ?? "",
       active: doctor.active,
       serviceIds: doctor.serviceIds ?? [],
     });
@@ -133,6 +141,8 @@ export const DoctorsPage: React.FC = () => {
         name: formState.name.trim(),
         speciality: formState.speciality.trim(),
         percent: Number(formState.percent),
+        phone: formState.phone.trim() || null,
+        birth_date: formState.birthDate || null,
         active: formState.active,
         serviceIds: formState.serviceIds,
       };
@@ -360,6 +370,31 @@ export const DoctorsPage: React.FC = () => {
                   value={formState.percent}
                   onChange={(event) => setFormState((prev) => ({ ...prev, percent: event.target.value }))}
                   aria-label="Процент"
+                  disabled={isSaving}
+                />
+              </label>
+              <label className="text-sm text-[#334155]">
+                Телефон
+                <input
+                  type="tel"
+                  className="mt-1 h-11 w-full rounded-[10px] border border-[#e2e8f0] bg-[#f8fafc] px-3 text-sm text-[#0f172a] outline-none transition focus:border-[#16a34a] focus:bg-white focus:ring-1 focus:ring-[#16a34a]/25"
+                  value={formState.phone}
+                  onChange={(event) => setFormState((prev) => ({ ...prev, phone: event.target.value }))}
+                  placeholder="+998 90 123 45 67"
+                  aria-label="Телефон врача"
+                  disabled={isSaving}
+                />
+              </label>
+              <label className="text-sm text-[#334155]">
+                Дата рождения
+                <input
+                  type="date"
+                  className="mt-1 h-11 w-full rounded-[10px] border border-[#e2e8f0] bg-[#f8fafc] px-3 text-sm text-[#0f172a] outline-none transition focus:border-[#16a34a] focus:bg-white focus:ring-1 focus:ring-[#16a34a]/25"
+                  value={formState.birthDate}
+                  onChange={(event) =>
+                    setFormState((prev) => ({ ...prev, birthDate: event.target.value }))
+                  }
+                  aria-label="Дата рождения врача"
                   disabled={isSaving}
                 />
               </label>

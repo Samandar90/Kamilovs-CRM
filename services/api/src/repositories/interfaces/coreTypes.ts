@@ -41,6 +41,8 @@ export type Doctor = {
   name: string;
   speciality: string;
   percent: number;
+  phone?: string | null;
+  birth_date?: string | null;
   active: boolean;
   serviceIds: number[];
   createdAt: string;

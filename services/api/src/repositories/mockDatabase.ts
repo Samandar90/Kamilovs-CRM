@@ -30,6 +30,8 @@ export type DoctorRecord = {
   name: string;
   speciality: string;
   percent: number;
+  phone?: string | null;
+  birth_date?: string | null;
   active: boolean;
   createdAt: string;
 };

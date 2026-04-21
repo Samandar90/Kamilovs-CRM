@@ -18,13 +18,36 @@ export const getDoctorByIdController = async (req: Request, res: Response) => {
 
 export const createDoctorController = async (req: Request, res: Response) => {
   const auth = getAuthPayload(req);
-  const created = await services.doctors.create(auth, req.body);
+  const { fullName, specialty, percent, phone, birth_date, active, serviceIds, name, speciality } =
+    req.body ?? {};
+  const created = await services.doctors.create(auth, {
+    name: (name ?? fullName) as string,
+    speciality: (speciality ?? specialty) as string,
+    percent: Number(percent),
+    phone: (phone ?? null) as string | null,
+    birth_date: (birth_date ?? null) as string | null,
+    active: Boolean(active),
+    serviceIds: Array.isArray(serviceIds) ? serviceIds : [],
+  });
   return res.status(201).json(created);
 };
 
 export const updateDoctorController = async (req: Request, res: Response) => {
   const auth = getAuthPayload(req);
-  const updated = await services.doctors.update(auth, Number(req.params.id), req.body);
+  const { fullName, specialty, percent, phone, birth_date, active, serviceIds, name, speciality } =
+    req.body ?? {};
+  const payload = {
+    ...(name !== undefined || fullName !== undefined ? { name: (name ?? fullName) as string } : {}),
+    ...(speciality !== undefined || specialty !== undefined
+      ? { speciality: (speciality ?? specialty) as string }
+      : {}),
+    ...(percent !== undefined ? { percent: Number(percent) } : {}),
+    ...(phone !== undefined ? { phone: (phone ?? null) as string | null } : {}),
+    ...(birth_date !== undefined ? { birth_date: (birth_date ?? null) as string | null } : {}),
+    ...(active !== undefined ? { active: Boolean(active) } : {}),
+    ...(serviceIds !== undefined && Array.isArray(serviceIds) ? { serviceIds } : {}),
+  };
+  const updated = await services.doctors.update(auth, Number(req.params.id), payload);
   if (!updated) throw new ApiError(404, "Doctor not found");
   return res.status(200).json(updated);
 };

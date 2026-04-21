@@ -10,11 +10,17 @@ CREATE TABLE IF NOT EXISTS doctors (
   name VARCHAR(255),
   speciality VARCHAR(128),
   percent NUMERIC(5, 2) NOT NULL DEFAULT 0 CHECK (percent >= 0 AND percent <= 100),
+  phone TEXT NULL,
+  birth_date DATE NULL,
   active BOOLEAN NOT NULL DEFAULT true,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   deleted_at TIMESTAMPTZ NULL
 );
+
+ALTER TABLE doctors
+  ADD COLUMN IF NOT EXISTS phone TEXT NULL,
+  ADD COLUMN IF NOT EXISTS birth_date DATE NULL;
 
 CREATE INDEX IF NOT EXISTS idx_doctors_last_first_active
 ON doctors (last_name, first_name)

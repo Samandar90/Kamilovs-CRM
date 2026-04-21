@@ -6,6 +6,11 @@ import { hasPermission } from "../../../auth/permissions";
 import { ListEmptyState } from "../../../components/ui/ListEmptyState";
 import { MultiSelect } from "../../../components/ui/MultiSelect";
 import { Modal } from "../../../components/ui/Modal";
+import {
+  getServicesCached,
+  getServicesInstant,
+  refreshServicesCache,
+} from "../../../shared/cache/servicesCache";
 import { normalizeMoneyInput } from "../../../shared/lib/money";
 import { formatSum } from "../../../utils/formatMoney";
 
@@ -66,9 +71,11 @@ const initialFormState: ServiceFormState = {
 export const ServicesPage: React.FC = () => {
   const { user, token } = useAuth();
   const canManage = !!user?.role && hasPermission(user.role, "services", "create");
-  const [services, setServices] = React.useState<ServiceRow[]>([]);
+  const [services, setServices] = React.useState<ServiceRow[]>(
+    () => (getServicesInstant() as ServiceRow[] | null) ?? []
+  );
   const [doctors, setDoctors] = React.useState<DoctorOption[]>([]);
-  const [loading, setLoading] = React.useState(true);
+  const [loading, setLoading] = React.useState(services.length === 0);
   const [isSaving, setIsSaving] = React.useState(false);
   const [togglingId, setTogglingId] = React.useState<number | null>(null);
   const [error, setError] = React.useState<string | null>(null);
@@ -79,15 +86,24 @@ export const ServicesPage: React.FC = () => {
 
   const loadAll = React.useCallback(async () => {
     if (!token) return;
-    setLoading(true);
     setError(null);
+    const fetchServices = () => requestJson<ServiceRow[]>("/api/services", { token });
     try {
       const [serviceRows, doctorRows] = await Promise.all([
-        requestJson<ServiceRow[]>("/api/services", { token }),
+        getServicesCached(fetchServices),
         requestJson<DoctorOption[]>("/api/doctors", { token }),
       ]);
-      setServices(serviceRows);
+      setServices(serviceRows as ServiceRow[]);
       setDoctors(doctorRows);
+
+      // Background refresh keeps UX instant but data fresh.
+      void refreshServicesCache(fetchServices)
+        .then((freshRows) => {
+          setServices(freshRows as ServiceRow[]);
+        })
+        .catch(() => {
+          // Ignore background refresh errors; initial data already rendered.
+        });
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Ошибка загрузки");
     } finally {
@@ -249,8 +265,10 @@ export const ServicesPage: React.FC = () => {
         </div>
       )}
       {loading ? (
-        <div className="rounded-2xl border border-[#e2e8f0] bg-white px-6 py-16 text-center text-sm text-[#64748b] shadow-sm">
-          Загрузка услуг...
+        <div className="space-y-3">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="h-14 animate-pulse rounded-xl bg-gray-100" />
+          ))}
         </div>
       ) : services.length === 0 ? (
         <ListEmptyState

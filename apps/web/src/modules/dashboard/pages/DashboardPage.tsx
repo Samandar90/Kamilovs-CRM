@@ -40,6 +40,8 @@ import { DashboardTodaySummary } from "../components/DashboardTodaySummary";
 import { dashboardApi } from "../api/dashboardApi";
 import { useDashboardData } from "../hooks/useDashboardData";
 import { primaryActionButtonClass } from "../../../shared/ui/buttonStyles";
+import { getServicesCached } from "../../../shared/cache/servicesCache";
+import { requestJson } from "../../../api/http";
 
 const DEBT_STATUSES: InvoiceStatus[] = ["draft", "issued", "partially_paid"];
 const UNPAID_STATUSES = new Set<InvoiceStatus>(["issued", "partially_paid"]);
@@ -119,6 +121,11 @@ export const DashboardPage: React.FC = () => {
     const timer = window.setTimeout(() => setToast(null), 2500);
     return () => window.clearTimeout(timer);
   }, [toast]);
+
+  React.useEffect(() => {
+    if (!token) return;
+    void getServicesCached(() => requestJson("/api/services", { token }));
+  }, [token]);
 
   const readAppointments = role ? canReadAppointments(role) : false;
   const readBilling = role ? canReadBilling(role) : false;

@@ -660,6 +660,24 @@ export class PostgresAppointmentsRepository implements IAppointmentsRepository {
     };
   }
 
+  async deleteServiceAssignment(appointmentId: number, serviceId: number): Promise<boolean> {
+    const result = await dbPool.query<{ id: number }>(
+      `
+        DELETE FROM appointment_services
+        WHERE id = (
+          SELECT id
+          FROM appointment_services
+          WHERE appointment_id = $1 AND service_id = $2
+          ORDER BY id DESC
+          LIMIT 1
+        )
+        RETURNING id
+      `,
+      [appointmentId, serviceId]
+    );
+    return result.rows.length > 0;
+  }
+
   async listServiceAssignments(appointmentId: number): Promise<AppointmentServiceAssignment[]> {
     const result = await dbPool.query<AppointmentServiceRow>(
       `

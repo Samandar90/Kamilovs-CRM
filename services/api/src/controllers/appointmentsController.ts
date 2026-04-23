@@ -220,6 +220,20 @@ export const listAppointmentServicesController = async (req: Request, res: Respo
   );
 };
 
+export const deleteAppointmentServiceController = async (req: Request, res: Response) => {
+  const auth = getAuthPayload(req);
+  const id = Number(req.params.id);
+  const serviceId = Number(req.params.serviceId);
+  if (!Number.isInteger(serviceId) || serviceId <= 0) {
+    throw new ApiError(400, "Param 'serviceId' must be a positive integer");
+  }
+  const deleted = await services.appointments.removeAssignedService(auth, id, serviceId);
+  if (!deleted) {
+    throw new ApiError(404, "Service assignment not found");
+  }
+  return res.status(200).json({ success: true });
+};
+
 export const completeAppointmentController = async (req: Request, res: Response) => {
   const auth = getAuthPayload(req);
   const id = Number(req.params.id);

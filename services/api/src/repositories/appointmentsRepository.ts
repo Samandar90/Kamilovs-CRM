@@ -222,6 +222,17 @@ export class MockAppointmentsRepository implements IAppointmentsRepository {
     return created;
   }
 
+  async deleteServiceAssignment(appointmentId: number, serviceId: number): Promise<boolean> {
+    const db = getMockDb();
+    const idx = [...db.appointmentServices]
+      .map((row, index) => ({ row, index }))
+      .filter(({ row }) => row.appointmentId === appointmentId && row.serviceId === serviceId)
+      .sort((a, b) => b.row.id - a.row.id)[0]?.index;
+    if (idx === undefined) return false;
+    db.appointmentServices.splice(idx, 1);
+    return true;
+  }
+
   async listServiceAssignments(appointmentId: number): Promise<AppointmentServiceAssignment[]> {
     return getMockDb().appointmentServices
       .filter((item) => item.appointmentId === appointmentId)

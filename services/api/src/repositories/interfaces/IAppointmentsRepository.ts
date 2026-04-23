@@ -38,6 +38,7 @@ export interface IAppointmentsRepository {
     serviceId: number,
     createdBy: number | null
   ): Promise<AppointmentServiceAssignment>;
+  deleteServiceAssignment(appointmentId: number, serviceId: number): Promise<boolean>;
   listServiceAssignments(appointmentId: number): Promise<AppointmentServiceAssignment[]>;
   updateBillingStatus(
     appointmentId: number,

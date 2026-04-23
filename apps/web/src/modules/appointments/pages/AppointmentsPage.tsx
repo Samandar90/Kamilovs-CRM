@@ -1,5 +1,4 @@
 import React from "react";
-import { renderToStaticMarkup } from "react-dom/server";
 import { CalendarDays, Plus, Search, Zap } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import { useAuth } from "../../../auth/AuthContext";
@@ -26,7 +25,6 @@ import { AppointmentCreateModal, type FullFormFields } from "../components/Appoi
 import { AppointmentQuickCreateModal } from "../features/quick-create/AppointmentQuickCreateModal";
 import { useDebouncedAppointmentSlotAvailability } from "../hooks/useDebouncedAppointmentSlotAvailability";
 import { CreatePatientModal } from "../components/CreatePatientModal";
-import { PrescriptionTemplate } from "../components/PrescriptionTemplate";
 import {
   normalizeDateTimeForApi,
   todayYmd,
@@ -52,7 +50,7 @@ type ConsultationModalState = {
   diagnosis: string;
   treatment: string;
   notes: string;
-  assignedServiceIds: number[];
+  services: Array<{ serviceId: number; name: string; price: number }>;
   selectedServiceId: string;
 };
 type AppointmentDetailsModalState = {
@@ -205,7 +203,7 @@ export const AppointmentsPage: React.FC = () => {
     diagnosis: "",
     treatment: "",
     notes: "",
-    assignedServiceIds: [],
+    services: [],
     selectedServiceId: "",
   });
   const [detailsModal, setDetailsModal] = React.useState<AppointmentDetailsModalState>({
@@ -226,6 +224,9 @@ export const AppointmentsPage: React.FC = () => {
     message: null,
     suggestedTimes: [],
   });
+  const [isConsultationSaving, setIsConsultationSaving] = React.useState(false);
+  const [isConsultationAutoSaving, setIsConsultationAutoSaving] = React.useState(false);
+  const consultationLastSavedSignatureRef = React.useRef<string>("");
 
   const fullSlotAvailabilityPhase = useDebouncedAppointmentSlotAvailability(
     token,
@@ -577,14 +578,24 @@ export const AppointmentsPage: React.FC = () => {
 
   const openConsultation = (appointment: Appointment) => {
     void loadServicesByDoctor(appointment.doctorId);
+    const initialServices = (appointment.services ?? []).map((item) => ({
+      serviceId: item.serviceId,
+      name: item.name,
+      price: item.price,
+    }));
     setConsultationModal({
       open: true,
       appointment,
       diagnosis: appointment.diagnosis ?? "",
       treatment: appointment.treatment ?? "",
       notes: appointment.notes ?? "",
-      assignedServiceIds: [],
+      services: initialServices,
       selectedServiceId: "",
+    });
+    consultationLastSavedSignatureRef.current = JSON.stringify({
+      diagnosis: appointment.diagnosis ?? "",
+      treatment: appointment.treatment ?? "",
+      notes: appointment.notes ?? "",
     });
     if (!token) return;
     void appointmentsFlowApi
@@ -592,7 +603,14 @@ export const AppointmentsPage: React.FC = () => {
       .then((rows) => {
         setConsultationModal((prev) => ({
           ...prev,
-          assignedServiceIds: rows.map((row) => row.serviceId),
+          services: rows.map((row) => {
+            const service = servicesMap[row.serviceId];
+            return {
+              serviceId: row.serviceId,
+              name: service?.name ?? `Услуга #${row.serviceId}`,
+              price: coercePriceToNumber(service?.price ?? 0),
+            };
+          }),
         }));
       })
       .catch(() => undefined);
@@ -605,35 +623,20 @@ export const AppointmentsPage: React.FC = () => {
       diagnosis: "",
       treatment: "",
       notes: "",
-      assignedServiceIds: [],
+      services: [],
       selectedServiceId: "",
     });
-  };
-
-  const printPrescription = () => {
-    if (!consultationModal.appointment) return;
-    const row = consultationModal.appointment;
-    const popup = window.open("", "_blank");
-    if (!popup) return;
-    const html = renderToStaticMarkup(
-      <PrescriptionTemplate
-        clinicName="Kamilovs clinic"
-        patientName={patientsMap[row.patientId] ?? `#${row.patientId}`}
-        doctorName={doctorsMap[row.doctorId] ?? `#${row.doctorId}`}
-        visitDate={formatDateTime(row.startAt)}
-        diagnosis={consultationModal.diagnosis || row.diagnosis || "Не указан"}
-        treatment={consultationModal.treatment || row.treatment || "Не указано"}
-        notes={consultationModal.notes || row.notes}
-      />
-    );
-    popup.document.write(`<!doctype html><html><body>${html}</body></html>`);
-    popup.document.close();
-    popup.focus();
-    popup.print();
+    consultationLastSavedSignatureRef.current = "";
+    setIsConsultationSaving(false);
+    setIsConsultationAutoSaving(false);
   };
 
   const completeConsultation = async () => {
     if (!token || !consultationModal.appointment || !canDoClinical) return;
+    if (consultationModal.services.length === 0) {
+      window.alert("Добавьте хотя бы одну услугу перед завершением приёма");
+      return;
+    }
     const diagnosis = consultationModal.diagnosis.trim();
     const treatment = consultationModal.treatment.trim();
     if (!diagnosis || !treatment) {
@@ -658,10 +661,20 @@ export const AppointmentsPage: React.FC = () => {
     }
   };
 
-  const addServiceToConsultation = async () => {
+  const addServiceToConsultation = async (forcedServiceId?: number) => {
     if (!token || !consultationModal.appointment) return;
-    const serviceId = Number(consultationModal.selectedServiceId);
+    const serviceId =
+      forcedServiceId ?? Number(consultationModal.selectedServiceId);
     if (!Number.isInteger(serviceId) || serviceId <= 0) return;
+    if (consultationModal.services.some((row) => row.serviceId === serviceId)) {
+      setConsultationModal((prev) => ({ ...prev, selectedServiceId: "" }));
+      return;
+    }
+    const service = servicesMap[serviceId];
+    if (!service) {
+      setError("Не удалось найти услугу");
+      return;
+    }
     setIsSubmitting(true);
     setError(null);
     try {
@@ -673,7 +686,14 @@ export const AppointmentsPage: React.FC = () => {
       setConsultationModal((prev) => ({
         ...prev,
         selectedServiceId: "",
-        assignedServiceIds: [...prev.assignedServiceIds, serviceId],
+        services: [
+          ...prev.services,
+          {
+            serviceId,
+            name: service.name,
+            price: coercePriceToNumber(service.price),
+          },
+        ],
       }));
       setToast("Услуга назначена");
     } catch (requestError) {
@@ -682,6 +702,112 @@ export const AppointmentsPage: React.FC = () => {
       setIsSubmitting(false);
     }
   };
+
+  const addQuickServiceToConsultation = async (
+    keywords: string[],
+    fallbackLabel: string
+  ) => {
+    const lowerKeywords = keywords.map((item) => item.toLowerCase());
+    const found = availableServices.find((service) => {
+      const name = service.name.toLowerCase();
+      return lowerKeywords.some((keyword) => name.includes(keyword));
+    });
+    if (!found) {
+      setToast(`Услуга «${fallbackLabel}» не найдена в списке`);
+      return;
+    }
+    await addServiceToConsultation(found.id);
+  };
+
+  const removeServiceFromConsultation = async (serviceId: number) => {
+    if (!token || !consultationModal.appointment) return;
+    setIsSubmitting(true);
+    setError(null);
+    try {
+      await appointmentsFlowApi.removeAppointmentService(
+        token,
+        consultationModal.appointment.id,
+        serviceId
+      );
+      setConsultationModal((prev) => ({
+        ...prev,
+        services: prev.services.filter((row) => row.serviceId !== serviceId),
+      }));
+      setToast("Услуга удалена");
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Не удалось удалить услугу");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const saveConsultationDraft = async (showToast = false): Promise<boolean> => {
+    if (!token || !consultationModal.appointment) return false;
+    const diagnosis = consultationModal.diagnosis.trim() || null;
+    const treatment = consultationModal.treatment.trim() || null;
+    const notes = consultationModal.notes.trim() || null;
+    const signature = JSON.stringify({ diagnosis, treatment, notes });
+    if (consultationLastSavedSignatureRef.current === signature) {
+      return true;
+    }
+    setIsConsultationSaving(true);
+    try {
+      const updated = await appointmentsFlowApi.updateAppointment(
+        token,
+        consultationModal.appointment.id,
+        { diagnosis, treatment, notes }
+      );
+      consultationLastSavedSignatureRef.current = signature;
+      setConsultationModal((prev) => ({
+        ...prev,
+        appointment: prev.appointment ? { ...prev.appointment, ...updated } : prev.appointment,
+      }));
+      if (showToast) setToast("Черновик сохранён");
+      return true;
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Не удалось сохранить черновик");
+      return false;
+    } finally {
+      setIsConsultationSaving(false);
+    }
+  };
+
+  React.useEffect(() => {
+    if (!token || !consultationModal.open || !consultationModal.appointment) return;
+    const diagnosis = consultationModal.diagnosis.trim() || null;
+    const treatment = consultationModal.treatment.trim() || null;
+    const notes = consultationModal.notes.trim() || null;
+    const signature = JSON.stringify({ diagnosis, treatment, notes });
+    if (consultationLastSavedSignatureRef.current === signature) return;
+    const timer = window.setTimeout(() => {
+      setIsConsultationAutoSaving(true);
+      void appointmentsFlowApi
+        .updateAppointment(token, consultationModal.appointment!.id, { diagnosis, treatment, notes })
+        .then((updated) => {
+          consultationLastSavedSignatureRef.current = signature;
+          setConsultationModal((prev) => ({
+            ...prev,
+            appointment: prev.appointment ? { ...prev.appointment, ...updated } : prev.appointment,
+          }));
+        })
+        .catch((requestError) => {
+          setError(
+            requestError instanceof Error
+              ? requestError.message
+              : "Не удалось выполнить автосохранение"
+          );
+        })
+        .finally(() => setIsConsultationAutoSaving(false));
+    }, 500);
+    return () => window.clearTimeout(timer);
+  }, [
+    token,
+    consultationModal.open,
+    consultationModal.appointment,
+    consultationModal.diagnosis,
+    consultationModal.treatment,
+    consultationModal.notes,
+  ]);
 
   const cancelAppointment = async () => {
     if (!token || !cancelModal.appointment || !canUpdateApptStatus) return;
@@ -1270,8 +1396,12 @@ export const AppointmentsPage: React.FC = () => {
         <Modal
           isOpen={consultationModal.open}
           onClose={closeConsultation}
-          className="w-full max-w-2xl rounded-[20px] border border-[#e5e7eb] bg-white p-6 shadow-[0_24px_48px_-24px_rgba(15,23,42,0.2)]"
+          className="w-full max-w-3xl rounded-[20px] border border-[#e5e7eb] bg-white p-6 shadow-[0_24px_48px_-24px_rgba(15,23,42,0.2)]"
         >
+            {(() => {
+              const consultationBusy = isSubmitting || isConsultationSaving || isConsultationAutoSaving;
+              return (
+                <>
             <h3 className="text-lg font-semibold text-[#111827]">Рабочее место врача</h3>
             <p className="mt-1 text-sm text-[#6b7280]">
               Пациент: {patientsMap[consultationModal.appointment.patientId] ?? `#${consultationModal.appointment.patientId}`}
@@ -1280,20 +1410,48 @@ export const AppointmentsPage: React.FC = () => {
               История визитов:{" "}
               {appointments.filter((row) => row.patientId === consultationModal.appointment?.patientId).length}
             </p>
-            <div className="mt-4 grid gap-3">
-              <div className="rounded-xl border border-[#e5e7eb] bg-[#f8fafc] p-3">
+            <div className="mt-1 text-xs text-[#94a3b8]">
+              {isConsultationAutoSaving ? "Автосохранение..." : "Изменения сохраняются автоматически"}
+            </div>
+            <div className="mt-4 grid max-h-[65vh] gap-4 overflow-y-auto pr-1">
+              <div className="rounded-xl border border-[#e5e7eb] bg-[#f8fafc] p-4 shadow-sm">
                 <p className="text-sm font-medium text-[#111827]">Назначенные услуги</p>
-                <ul className="mt-2 space-y-1 text-sm text-[#334155]">
-                  {consultationModal.assignedServiceIds.length === 0 ? (
-                    <li className="text-[#6b7280]">Пока не назначены</li>
-                  ) : (
-                    consultationModal.assignedServiceIds.map((serviceId, idx) => (
-                      <li key={`${serviceId}-${idx}`}>
-                        {servicesMap[serviceId]?.name ?? `Услуга #${serviceId}`}
-                      </li>
-                    ))
-                  )}
-                </ul>
+                {consultationModal.services.length === 0 ? (
+                  <p className="mt-2 text-sm text-[#9ca3af]">Нет назначенных услуг</p>
+                ) : (
+                  <>
+                    <ul className="mt-3 divide-y divide-[#e5e7eb] rounded-lg border border-[#e5e7eb] bg-white text-sm">
+                      {consultationModal.services.map((service) => (
+                        <li
+                          key={service.serviceId}
+                          className="flex items-center justify-between gap-3 px-3 py-2 transition-opacity duration-200 hover:bg-[#f8fafc]"
+                        >
+                          <span className="text-[#111827]">{service.name}</span>
+                          <div className="flex items-center gap-3">
+                            <span className="text-[#6b7280] tabular-nums">
+                              {formatSum(service.price)}
+                            </span>
+                            <button
+                              type="button"
+                              className="text-[#94a3b8] transition hover:text-rose-600"
+                              onClick={() => void removeServiceFromConsultation(service.serviceId)}
+                              disabled={consultationBusy}
+                              aria-label={`Удалить услугу ${service.name}`}
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                    <div className="mt-3 flex justify-end text-base font-semibold text-[#111827]">
+                      ИТОГО:{" "}
+                      {formatSum(
+                        consultationModal.services.reduce((sum, service) => sum + service.price, 0)
+                      )}
+                    </div>
+                  </>
+                )}
                 <div className="mt-3 flex gap-2">
                   <select
                     value={consultationModal.selectedServiceId}
@@ -1304,7 +1462,7 @@ export const AppointmentsPage: React.FC = () => {
                       }))
                     }
                     className="h-10 flex-1 rounded-[10px] border border-[#e5e7eb] bg-white px-3 text-sm text-[#111827]"
-                    disabled={isSubmitting}
+                    disabled={consultationBusy}
                   >
                     <option value="">Выберите услугу</option>
                     {availableServices.map((service) => (
@@ -1317,10 +1475,43 @@ export const AppointmentsPage: React.FC = () => {
                     type="button"
                     className="rounded-xl border border-[#e5e7eb] bg-white px-3 text-sm font-medium text-[#111827] transition hover:bg-[#f3f4f6]"
                     onClick={() => void addServiceToConsultation()}
-                    disabled={isSubmitting || !consultationModal.selectedServiceId}
+                    disabled={consultationBusy || !consultationModal.selectedServiceId}
                   >
-                    + Добавить услугу
+                    + Добавить
                   </button>
+                </div>
+                <div className="mt-3">
+                  <p className="text-xs font-medium uppercase tracking-wide text-[#94a3b8]">
+                    Быстрые услуги
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      className="rounded-xl border border-[#e5e7eb] bg-white px-3 py-1.5 text-xs text-[#334155] transition hover:bg-[#f3f4f6]"
+                      disabled={consultationBusy}
+                      onClick={() => void addQuickServiceToConsultation(["анест"], "Анестезия")}
+                    >
+                      + Анестезия
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded-xl border border-[#e5e7eb] bg-white px-3 py-1.5 text-xs text-[#334155] transition hover:bg-[#f3f4f6]"
+                      disabled={consultationBusy}
+                      onClick={() =>
+                        void addQuickServiceToConsultation(["консульт"], "Консультация")
+                      }
+                    >
+                      + Консультация
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded-xl border border-[#e5e7eb] bg-white px-3 py-1.5 text-xs text-[#334155] transition hover:bg-[#f3f4f6]"
+                      disabled={consultationBusy}
+                      onClick={() => void addQuickServiceToConsultation(["осмотр"], "Осмотр")}
+                    >
+                      + Осмотр
+                    </button>
+                  </div>
                 </div>
               </div>
               <label className="text-sm text-[#111827]">
@@ -1330,7 +1521,7 @@ export const AppointmentsPage: React.FC = () => {
                   onChange={(event) => setConsultationModal((prev) => ({ ...prev, diagnosis: event.target.value }))}
                   className="mt-1 h-11 w-full rounded-[10px] border border-[#e5e7eb] bg-[#f9fafb] px-3 text-sm text-[#111827] outline-none transition focus:border-[#22c55e] focus:bg-white focus:ring-1 focus:ring-[#22c55e]/25"
                   aria-label="diagnosis"
-                  disabled={isSubmitting}
+                  disabled={consultationBusy}
                 />
               </label>
               <label className="text-sm text-[#111827]">
@@ -1340,7 +1531,7 @@ export const AppointmentsPage: React.FC = () => {
                   onChange={(event) => setConsultationModal((prev) => ({ ...prev, treatment: event.target.value }))}
                   className="mt-1 min-h-20 w-full rounded-[10px] border border-[#e5e7eb] bg-[#f9fafb] px-3 py-2 text-sm text-[#111827] outline-none transition focus:border-[#22c55e] focus:bg-white focus:ring-1 focus:ring-[#22c55e]/25"
                   aria-label="treatment"
-                  disabled={isSubmitting}
+                  disabled={consultationBusy}
                 />
               </label>
               <label className="text-sm text-[#111827]">
@@ -1350,36 +1541,39 @@ export const AppointmentsPage: React.FC = () => {
                   onChange={(event) => setConsultationModal((prev) => ({ ...prev, notes: event.target.value }))}
                   className="mt-1 min-h-20 w-full rounded-[10px] border border-[#e5e7eb] bg-[#f9fafb] px-3 py-2 text-sm text-[#111827] outline-none transition focus:border-[#22c55e] focus:bg-white focus:ring-1 focus:ring-[#22c55e]/25"
                   aria-label="notes"
-                  disabled={isSubmitting}
+                  disabled={consultationBusy}
                 />
               </label>
             </div>
-            <div className="mt-4 flex flex-wrap justify-end gap-2">
-              <button
-                type="button"
-                className="rounded-xl border border-[#e5e7eb] bg-white px-4 py-2 text-sm font-medium text-[#111827] transition hover:bg-[#f3f4f6] active:scale-[0.97]"
-                onClick={() => printPrescription()}
-                disabled={isSubmitting}
-              >
-                Печать назначения
-              </button>
+            <div className="sticky bottom-0 mt-4 flex flex-wrap justify-end gap-2 border-t border-[#e5e7eb] bg-white pt-3">
               <button
                 type="button"
                 className="rounded-xl border border-[#e5e7eb] bg-white px-4 py-2 text-sm font-medium text-[#111827] transition hover:bg-[#f3f4f6] active:scale-[0.97]"
                 onClick={closeConsultation}
-                disabled={isSubmitting}
+                disabled={consultationBusy}
               >
                 Отмена
               </button>
               <button
                 type="button"
+                className="rounded-xl border border-[#e5e7eb] bg-white px-4 py-2 text-sm font-medium text-[#111827] transition hover:bg-[#f3f4f6] active:scale-[0.97] disabled:opacity-50"
+                onClick={() => void saveConsultationDraft(true)}
+                disabled={consultationBusy}
+              >
+                {isConsultationSaving ? "Сохранение..." : "Сохранить"}
+              </button>
+              <button
+                type="button"
                 className="rounded-xl bg-[#22c55e] px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:scale-[1.03] hover:bg-[#16a34a] active:scale-[0.97] disabled:opacity-50"
                 onClick={() => void completeConsultation()}
-                disabled={isSubmitting || !canCompleteConsultation}
+                disabled={consultationBusy || !canCompleteConsultation}
               >
                 {isSubmitting ? "Сохранение..." : "Завершить приём"}
               </button>
             </div>
+                </>
+              );
+            })()}
         </Modal>
       )}
     </div>

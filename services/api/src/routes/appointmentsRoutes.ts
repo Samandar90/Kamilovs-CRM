@@ -9,6 +9,7 @@ import {
   deleteAppointmentController,
   getAppointmentByIdController,
   listAppointmentServicesController,
+  deleteAppointmentServiceController,
   listAppointmentsController,
   updateAppointmentPriceController,
   updateAppointmentController,
@@ -75,6 +76,13 @@ router.post(
   allowPermission("APPOINTMENT_UPDATE"),
   validateAppointmentIdParam,
   asyncHandler(addAppointmentServiceController)
+);
+router.delete(
+  "/:id/services/:serviceId",
+  requireAuth,
+  allowPermission("APPOINTMENT_UPDATE"),
+  validateAppointmentIdParam,
+  asyncHandler(deleteAppointmentServiceController)
 );
 router.patch(
   "/:id/complete",

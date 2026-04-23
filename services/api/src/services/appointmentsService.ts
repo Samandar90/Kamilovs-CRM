@@ -606,8 +606,8 @@ export class AppointmentsService {
     appointmentId: number,
     serviceId: number
   ): Promise<AppointmentServiceAssignment> {
-    if (auth.role !== "doctor") {
-      throw new ApiError(403, "Только врач может назначать услуги в приеме");
+    if (auth.role !== "doctor" && auth.role !== "superadmin") {
+      throw new ApiError(403, "Недостаточно прав для назначения услуг в приеме");
     }
     const appointment = await this.appointmentsRepository.findById(appointmentId);
     if (!appointment) {
@@ -616,7 +616,9 @@ export class AppointmentsService {
     if (appointment.billingStatus === "paid") {
       throw new ApiError(409, "Нельзя изменять услуги после оплаты");
     }
-    enforceDoctorSelfScopeOnWrite(auth, appointment.doctorId);
+    if (auth.role === "doctor") {
+      enforceDoctorSelfScopeOnWrite(auth, appointment.doctorId);
+    }
     if (appointment.status !== "in_consultation" && appointment.status !== "arrived") {
       throw new ApiError(400, "Услуги можно назначать только во время приема");
     }
@@ -650,6 +652,30 @@ export class AppointmentsService {
       throw new ApiError(403, "Недостаточно прав");
     }
     return this.appointmentsRepository.listServiceAssignments(appointmentId);
+  }
+
+  async removeAssignedService(
+    auth: AuthTokenPayload,
+    appointmentId: number,
+    serviceId: number
+  ): Promise<boolean> {
+    if (auth.role !== "doctor" && auth.role !== "superadmin") {
+      throw new ApiError(403, "Недостаточно прав для удаления услуги");
+    }
+    const appointment = await this.appointmentsRepository.findById(appointmentId);
+    if (!appointment) {
+      throw new ApiError(404, "Appointment not found");
+    }
+    if (appointment.billingStatus === "paid") {
+      throw new ApiError(409, "Нельзя изменять услуги после оплаты");
+    }
+    if (auth.role === "doctor") {
+      enforceDoctorSelfScopeOnWrite(auth, appointment.doctorId);
+    }
+    if (appointment.status !== "in_consultation" && appointment.status !== "arrived") {
+      throw new ApiError(400, "Услуги можно изменять только во время приема");
+    }
+    return this.appointmentsRepository.deleteServiceAssignment(appointmentId, serviceId);
   }
 }
 

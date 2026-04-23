@@ -255,6 +255,15 @@ export const appointmentsFlowApi = {
       body: { service_id: serviceId },
     }),
 
+  removeAppointmentService: (token: string, appointmentId: number, serviceId: number) =>
+    requestJson<{ success: boolean }>(
+      `/api/appointments/${appointmentId}/services/${serviceId}`,
+      {
+        method: "DELETE",
+        token,
+      }
+    ),
+
   cancelAppointment: (
     token: string,
     appointmentId: number,

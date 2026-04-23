@@ -234,6 +234,24 @@ export const deleteAppointmentServiceController = async (req: Request, res: Resp
   return res.status(200).json({ success: true });
 };
 
+export const syncAppointmentServicesController = async (req: Request, res: Response) => {
+  const auth = getAuthPayload(req);
+  const id = Number(req.params.id);
+  const serviceIdsRaw = Array.isArray(req.body?.serviceIds) ? req.body.serviceIds : [];
+  const serviceIds = serviceIdsRaw
+    .map((value: unknown) => Number(value))
+    .filter((value: number) => Number.isInteger(value) && value > 0);
+  const assignments = await services.appointments.syncAssignedServices(auth, id, serviceIds);
+  return res.status(200).json(
+    assignments.map((row) => ({
+      id: row.id,
+      appointmentId: row.appointmentId,
+      serviceId: row.serviceId,
+      createdAt: row.createdAt,
+    }))
+  );
+};
+
 export const completeAppointmentController = async (req: Request, res: Response) => {
   const auth = getAuthPayload(req);
   const id = Number(req.params.id);

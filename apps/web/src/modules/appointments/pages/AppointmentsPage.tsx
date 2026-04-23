@@ -602,6 +602,7 @@ export const AppointmentsPage: React.FC = () => {
       diagnosis: appointment.diagnosis ?? "",
       treatment: appointment.treatment ?? "",
       notes: appointment.notes ?? "",
+      serviceIds: initialServices.map((item) => item.serviceId),
     });
     if (!token) return;
     void appointmentsFlowApi
@@ -682,6 +683,10 @@ export const AppointmentsPage: React.FC = () => {
       setError("Заполните diagnosis и treatment перед завершением приема");
       return;
     }
+    const saved = await saveConsultationDraft(false);
+    if (!saved) {
+      return;
+    }
     setIsSubmitting(true);
     setError(null);
     try {
@@ -701,7 +706,7 @@ export const AppointmentsPage: React.FC = () => {
   };
 
   const addServiceToConsultation = async (forcedServiceId?: number) => {
-    if (!token || !consultationModal.appointment) return;
+    if (!consultationModal.appointment) return;
     const serviceId =
       forcedServiceId ?? Number(consultationModal.selectedServiceId);
     if (!Number.isInteger(serviceId) || serviceId <= 0) return;
@@ -714,54 +719,26 @@ export const AppointmentsPage: React.FC = () => {
       setError("Не удалось найти услугу");
       return;
     }
-    setIsSubmitting(true);
-    setError(null);
-    try {
-      await appointmentsFlowApi.addAppointmentService(
-        token,
-        consultationModal.appointment.id,
-        serviceId
-      );
-      setConsultationModal((prev) => ({
-        ...prev,
-        selectedServiceId: "",
-        services: [
-          ...prev.services,
-          {
-            serviceId,
-            name: service.name,
-            price: coercePriceToNumber(service.price),
-          },
-        ],
-      }));
-      setToast("Услуга назначена");
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Не удалось назначить услугу");
-    } finally {
-      setIsSubmitting(false);
-    }
+    setConsultationModal((prev) => ({
+      ...prev,
+      selectedServiceId: "",
+      services: [
+        ...prev.services,
+        {
+          serviceId,
+          name: service.name,
+          price: coercePriceToNumber(service.price),
+        },
+      ],
+    }));
   };
 
   const removeServiceFromConsultation = async (serviceId: number) => {
-    if (!token || !consultationModal.appointment) return;
-    setIsSubmitting(true);
-    setError(null);
-    try {
-      await appointmentsFlowApi.removeAppointmentService(
-        token,
-        consultationModal.appointment.id,
-        serviceId
-      );
-      setConsultationModal((prev) => ({
-        ...prev,
-        services: prev.services.filter((row) => row.serviceId !== serviceId),
-      }));
-      setToast("Услуга удалена");
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Не удалось удалить услугу");
-    } finally {
-      setIsSubmitting(false);
-    }
+    if (!consultationModal.appointment) return;
+    setConsultationModal((prev) => ({
+      ...prev,
+      services: prev.services.filter((row) => row.serviceId !== serviceId),
+    }));
   };
 
   const addCarePlanItem = () => {
@@ -793,7 +770,8 @@ export const AppointmentsPage: React.FC = () => {
     const diagnosis = consultationModal.diagnosis.trim() || null;
     const treatment = consultationModal.treatment.trim() || null;
     const notes = consultationModal.notes.trim() || null;
-    const signature = JSON.stringify({ diagnosis, treatment, notes });
+    const serviceIds = consultationModal.services.map((item) => item.serviceId);
+    const signature = JSON.stringify({ diagnosis, treatment, notes, serviceIds });
     if (consultationLastSavedSignatureRef.current === signature) {
       return true;
     }
@@ -804,12 +782,18 @@ export const AppointmentsPage: React.FC = () => {
         consultationModal.appointment.id,
         { diagnosis, treatment, notes }
       );
+      await appointmentsFlowApi.syncAppointmentServices(
+        token,
+        consultationModal.appointment.id,
+        serviceIds
+      );
       consultationLastSavedSignatureRef.current = signature;
       setConsultationModal((prev) => ({
         ...prev,
         appointment: prev.appointment ? { ...prev.appointment, ...updated } : prev.appointment,
       }));
-      if (showToast) setToast("Черновик сохранён");
+      await loadData();
+      if (showToast) setToast("Изменения сохранены");
       return true;
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Не удалось сохранить черновик");

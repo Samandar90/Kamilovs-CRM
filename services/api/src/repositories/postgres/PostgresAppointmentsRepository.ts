@@ -678,6 +678,62 @@ export class PostgresAppointmentsRepository implements IAppointmentsRepository {
     return result.rows.length > 0;
   }
 
+  async replaceServiceAssignments(
+    appointmentId: number,
+    serviceIds: number[],
+    createdBy: number | null
+  ): Promise<AppointmentServiceAssignment[]> {
+    const uniqueServiceIds = Array.from(
+      new Set(serviceIds.filter((id) => Number.isInteger(id) && id > 0))
+    );
+    const client = await dbPool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query(
+        `
+          DELETE FROM appointment_services
+          WHERE appointment_id = $1
+        `,
+        [appointmentId]
+      );
+      for (const serviceId of uniqueServiceIds) {
+        await client.query(
+          `
+            INSERT INTO appointment_services (appointment_id, service_id, created_by)
+            VALUES ($1, $2, $3)
+          `,
+          [appointmentId, serviceId, createdBy]
+        );
+      }
+      const result = await client.query<AppointmentServiceRow>(
+        `
+          SELECT id, appointment_id, service_id, created_by, created_at
+          FROM appointment_services
+          WHERE appointment_id = $1
+          ORDER BY id ASC
+        `,
+        [appointmentId]
+      );
+      await client.query("COMMIT");
+      return result.rows.map((row) => ({
+        id: Number(row.id),
+        appointmentId: Number(row.appointment_id),
+        serviceId: Number(row.service_id),
+        createdBy: row.created_by == null ? null : Number(row.created_by),
+        createdAt: normalizeToLocalDateTime(row.created_at),
+      }));
+    } catch (error) {
+      try {
+        await client.query("ROLLBACK");
+      } catch {
+        /* noop */
+      }
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
   async listServiceAssignments(appointmentId: number): Promise<AppointmentServiceAssignment[]> {
     const result = await dbPool.query<AppointmentServiceRow>(
       `

@@ -10,6 +10,7 @@ import {
   getAppointmentByIdController,
   listAppointmentServicesController,
   deleteAppointmentServiceController,
+  syncAppointmentServicesController,
   listAppointmentsController,
   updateAppointmentPriceController,
   updateAppointmentController,
@@ -83,6 +84,13 @@ router.delete(
   allowPermission("APPOINTMENT_UPDATE"),
   validateAppointmentIdParam,
   asyncHandler(deleteAppointmentServiceController)
+);
+router.put(
+  "/:id/services",
+  requireAuth,
+  allowPermission("APPOINTMENT_UPDATE"),
+  validateAppointmentIdParam,
+  asyncHandler(syncAppointmentServicesController)
 );
 router.patch(
   "/:id/complete",

@@ -264,6 +264,13 @@ export const appointmentsFlowApi = {
       }
     ),
 
+  syncAppointmentServices: (token: string, appointmentId: number, serviceIds: number[]) =>
+    requestJson<AppointmentAssignedService[]>(`/api/appointments/${appointmentId}/services`, {
+      method: "PUT",
+      token,
+      body: { serviceIds },
+    }),
+
   cancelAppointment: (
     token: string,
     appointmentId: number,

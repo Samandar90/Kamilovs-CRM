@@ -677,5 +677,51 @@ export class AppointmentsService {
     }
     return this.appointmentsRepository.deleteServiceAssignment(appointmentId, serviceId);
   }
+
+  async syncAssignedServices(
+    auth: AuthTokenPayload,
+    appointmentId: number,
+    serviceIds: number[]
+  ): Promise<AppointmentServiceAssignment[]> {
+    if (auth.role !== "doctor" && auth.role !== "superadmin") {
+      throw new ApiError(403, "Недостаточно прав для синхронизации услуг");
+    }
+    const appointment = await this.appointmentsRepository.findById(appointmentId);
+    if (!appointment) {
+      throw new ApiError(404, "Appointment not found");
+    }
+    if (appointment.billingStatus === "paid") {
+      throw new ApiError(409, "Нельзя изменять услуги после оплаты");
+    }
+    if (auth.role === "doctor") {
+      enforceDoctorSelfScopeOnWrite(auth, appointment.doctorId);
+    }
+    if (appointment.status !== "in_consultation" && appointment.status !== "arrived") {
+      throw new ApiError(400, "Услуги можно изменять только во время приема");
+    }
+
+    const uniqueServiceIds = Array.from(
+      new Set(serviceIds.filter((id) => Number.isInteger(id) && id > 0))
+    );
+    for (const serviceId of uniqueServiceIds) {
+      const exists = await this.appointmentsRepository.serviceExists(serviceId);
+      if (!exists) {
+        throw new ApiError(404, `Service ${serviceId} not found`);
+      }
+      const assignedToDoctor = await this.appointmentsRepository.isServiceAssignedToDoctor(
+        serviceId,
+        appointment.doctorId
+      );
+      if (!assignedToDoctor) {
+        throw new ApiError(400, "Selected service is not assigned to selected doctor");
+      }
+    }
+
+    return this.appointmentsRepository.replaceServiceAssignments(
+      appointmentId,
+      uniqueServiceIds,
+      auth.userId
+    );
+  }
 }
 

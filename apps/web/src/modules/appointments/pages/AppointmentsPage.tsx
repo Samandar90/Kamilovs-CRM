@@ -52,6 +52,7 @@ type ConsultationModalState = {
   notes: string;
   services: Array<{ serviceId: number; name: string; price: number }>;
   carePlanItems: Array<{ id: string; type: "medication" | "recommendation" | "procedure"; text: string }>;
+  carePlanInput: string;
   selectedServiceId: string;
 };
 type AppointmentDetailsModalState = {
@@ -206,6 +207,7 @@ export const AppointmentsPage: React.FC = () => {
     notes: "",
     services: [],
     carePlanItems: [],
+    carePlanInput: "",
     selectedServiceId: "",
   });
   const [detailsModal, setDetailsModal] = React.useState<AppointmentDetailsModalState>({
@@ -593,6 +595,7 @@ export const AppointmentsPage: React.FC = () => {
       notes: appointment.notes ?? "",
       services: initialServices,
       carePlanItems: [],
+      carePlanInput: "",
       selectedServiceId: "",
     });
     consultationLastSavedSignatureRef.current = JSON.stringify({
@@ -628,6 +631,7 @@ export const AppointmentsPage: React.FC = () => {
       notes: "",
       services: [],
       carePlanItems: [],
+      carePlanInput: "",
       selectedServiceId: "",
     });
     consultationLastSavedSignatureRef.current = "";
@@ -738,22 +742,6 @@ export const AppointmentsPage: React.FC = () => {
     }
   };
 
-  const addQuickServiceToConsultation = async (
-    keywords: string[],
-    fallbackLabel: string
-  ) => {
-    const lowerKeywords = keywords.map((item) => item.toLowerCase());
-    const found = availableServices.find((service) => {
-      const name = service.name.toLowerCase();
-      return lowerKeywords.some((keyword) => name.includes(keyword));
-    });
-    if (!found) {
-      setToast(`Услуга «${fallbackLabel}» не найдена в списке`);
-      return;
-    }
-    await addServiceToConsultation(found.id);
-  };
-
   const removeServiceFromConsultation = async (serviceId: number) => {
     if (!token || !consultationModal.appointment) return;
     setIsSubmitting(true);
@@ -776,22 +764,20 @@ export const AppointmentsPage: React.FC = () => {
     }
   };
 
-  const addCarePlanItem = (type: "medication" | "recommendation" | "procedure") => {
-    const defaults: Record<typeof type, string> = {
-      medication: "Амоксиклав — 2 раза в день",
-      recommendation: "Полоскание — 5 дней",
-      procedure: "Повторный осмотр через 7 дней",
-    };
+  const addCarePlanItem = () => {
+    const text = consultationModal.carePlanInput.trim();
+    if (!text) return;
     setConsultationModal((prev) => ({
       ...prev,
       carePlanItems: [
         ...prev.carePlanItems,
         {
-          id: `${type}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-          type,
-          text: defaults[type],
+          id: `item-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          type: "recommendation",
+          text,
         },
       ],
+      carePlanInput: "",
     }));
   };
 
@@ -1541,39 +1527,6 @@ export const AppointmentsPage: React.FC = () => {
                     + Добавить
                   </button>
                 </div>
-                <div className="mt-3">
-                  <p className="text-xs font-medium uppercase tracking-wide text-[#94a3b8]">
-                    Быстрые услуги
-                  </p>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      className="rounded-xl border border-[#e5e7eb] bg-white px-3 py-1.5 text-xs text-[#334155] transition hover:bg-[#f3f4f6]"
-                      disabled={consultationBusy}
-                      onClick={() => void addQuickServiceToConsultation(["анест"], "Анестезия")}
-                    >
-                      + Анестезия
-                    </button>
-                    <button
-                      type="button"
-                      className="rounded-xl border border-[#e5e7eb] bg-white px-3 py-1.5 text-xs text-[#334155] transition hover:bg-[#f3f4f6]"
-                      disabled={consultationBusy}
-                      onClick={() =>
-                        void addQuickServiceToConsultation(["консульт"], "Консультация")
-                      }
-                    >
-                      + Консультация
-                    </button>
-                    <button
-                      type="button"
-                      className="rounded-xl border border-[#e5e7eb] bg-white px-3 py-1.5 text-xs text-[#334155] transition hover:bg-[#f3f4f6]"
-                      disabled={consultationBusy}
-                      onClick={() => void addQuickServiceToConsultation(["осмотр"], "Осмотр")}
-                    >
-                      + Осмотр
-                    </button>
-                  </div>
-                </div>
               </div>
               <label className="text-sm text-[#111827]">
                 <span className="text-xs font-medium uppercase tracking-wide text-[#94a3b8]">
@@ -1616,40 +1569,40 @@ export const AppointmentsPage: React.FC = () => {
               </label>
               <div className="rounded-2xl border border-[#e5e7eb] bg-[#fafafa] p-4 shadow-sm">
                 <p className="text-sm font-medium text-[#111827]">Назначение</p>
-                <div className="mt-2 flex flex-wrap gap-2">
+                <div className="mt-2 flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={consultationModal.carePlanInput}
+                    onChange={(event) =>
+                      setConsultationModal((prev) => ({
+                        ...prev,
+                        carePlanInput: event.target.value,
+                      }))
+                    }
+                    placeholder="Например: Амоксиклав 2 раза в день"
+                    className="h-10 flex-1 rounded-xl border border-[#e5e7eb] bg-white px-3 text-sm text-[#111827] outline-none transition focus:border-[#22c55e] focus:ring-1 focus:ring-[#22c55e]/25"
+                    disabled={consultationBusy}
+                  />
                   <button
                     type="button"
-                    className="rounded-xl border border-[#e5e7eb] bg-white px-3 py-1.5 text-xs text-[#334155] transition duration-150 ease-out hover:bg-[#f3f4f6]"
-                    disabled={consultationBusy}
-                    onClick={() => addCarePlanItem("medication")}
+                    className="rounded-xl border border-[#e5e7eb] bg-white px-3 py-2 text-sm font-medium text-[#111827] transition duration-150 ease-out hover:bg-[#f3f4f6]"
+                    disabled={consultationBusy || !consultationModal.carePlanInput.trim()}
+                    onClick={addCarePlanItem}
                   >
-                    + Препарат
-                  </button>
-                  <button
-                    type="button"
-                    className="rounded-xl border border-[#e5e7eb] bg-white px-3 py-1.5 text-xs text-[#334155] transition duration-150 ease-out hover:bg-[#f3f4f6]"
-                    disabled={consultationBusy}
-                    onClick={() => addCarePlanItem("recommendation")}
-                  >
-                    + Рекомендация
-                  </button>
-                  <button
-                    type="button"
-                    className="rounded-xl border border-[#e5e7eb] bg-white px-3 py-1.5 text-xs text-[#334155] transition duration-150 ease-out hover:bg-[#f3f4f6]"
-                    disabled={consultationBusy}
-                    onClick={() => addCarePlanItem("procedure")}
-                  >
-                    + Процедура
+                    Добавить
                   </button>
                 </div>
                 <ul className="mt-3 space-y-2 text-sm text-[#334155]">
                   {consultationModal.carePlanItems.length === 0 ? (
-                    <li className="text-[#9ca3af]">Нет добавленных назначений</li>
+                    <>
+                      <li className="text-[#9ca3af]">Нет назначений</li>
+                      <li className="text-xs text-[#c0c4cc]">Добавьте рекомендации пациенту</li>
+                    </>
                   ) : (
                     consultationModal.carePlanItems.map((item) => (
                       <li
                         key={item.id}
-                        className="flex items-center justify-between rounded-xl border border-[#e5e7eb] bg-white px-3 py-2"
+                        className="flex items-center justify-between rounded-xl border border-[#e5e7eb] bg-white px-3 py-2 transition duration-150 ease-out hover:bg-[#f8fafc]"
                       >
                         <span>• {item.text}</span>
                         <button

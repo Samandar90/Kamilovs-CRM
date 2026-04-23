@@ -31,6 +31,14 @@ export const AppointmentPrimaryWorkflowButton: React.FC<Props> = ({
   onCompleteConsultation,
   onOpenDoctorWorkspace,
 }) => {
+  if (canOpenDoctorWorkspace && (appointment.status === "completed" || appointment.status === "in_consultation")) {
+    return (
+      <button type="button" className={btnNeutral} disabled={disabled} onClick={onOpenDoctorWorkspace}>
+        Рабочее место врача
+      </button>
+    );
+  }
+
   if (canUpdateAppointment && (appointment.status === "scheduled" || appointment.status === "confirmed")) {
     return (
       <button type="button" className={btnPrimary} disabled={disabled} onClick={onMarkArrived}>
@@ -47,7 +55,7 @@ export const AppointmentPrimaryWorkflowButton: React.FC<Props> = ({
     );
   }
 
-  if (appointment.status === "in_consultation" && (canOpenDoctorWorkspace || canUpdateAppointment)) {
+  if (appointment.status === "in_consultation" && canUpdateAppointment && !canOpenDoctorWorkspace) {
     return (
       <button type="button" className={btnPrimary} disabled={disabled} onClick={onCompleteConsultation}>
         Завершить приём

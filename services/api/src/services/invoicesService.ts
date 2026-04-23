@@ -338,25 +338,53 @@ export class InvoicesService {
       throw new ApiError(409, "Счёт уже создан для этой записи");
     }
 
-    const appointment = await this.appointmentsRepository.findById(appointmentId);
+    const [assigned, appointment] = await Promise.all([
+      this.appointmentsRepository.listServiceAssignments(appointmentId),
+      this.appointmentsRepository.findById(appointmentId),
+    ]);
     if (!appointment) {
       throw new ApiError(404, "Appointment not found");
     }
 
-    const assignedServices = await this.appointmentsRepository.listServiceAssignments(appointmentId);
-    const serviceIds = new Set<number>(assignedServices.map((row) => row.serviceId));
+    const allServices: Array<{ serviceId: number; name: string; price: number }> = [];
+    const seenServiceIds = new Set<number>();
 
     if (Number.isInteger(appointment.serviceId) && appointment.serviceId > 0) {
-      serviceIds.add(appointment.serviceId);
+      const baseService = await this.servicesRepository.findById(appointment.serviceId);
+      if (!baseService) {
+        throw new ApiError(404, `Service ${appointment.serviceId} not found`);
+      }
+      allServices.push({
+        serviceId: baseService.id,
+        name: baseService.name,
+        price: roundMoney2(baseService.price),
+      });
+      seenServiceIds.add(baseService.id);
     }
 
-    if (serviceIds.size === 0) {
+    for (const row of assigned) {
+      if (seenServiceIds.has(row.serviceId)) continue;
+      const service = await this.servicesRepository.findById(row.serviceId);
+      if (!service) {
+        throw new ApiError(404, `Service ${row.serviceId} not found`);
+      }
+      allServices.push({
+        serviceId: service.id,
+        name: service.name,
+        price: roundMoney2(service.price),
+      });
+      seenServiceIds.add(service.id);
+    }
+
+    if (allServices.length === 0) {
       throw new ApiError(400, "No services found for appointment");
     }
 
-    const items = Array.from(serviceIds).map((serviceId) => ({
-      serviceId,
+    const items = allServices.map((service) => ({
+      serviceId: service.serviceId,
       quantity: 1,
+      description: service.name,
+      price: service.price,
     }));
 
     const created = await this.create(auth, {

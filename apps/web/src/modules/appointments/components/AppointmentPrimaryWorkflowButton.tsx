@@ -31,7 +31,10 @@ export const AppointmentPrimaryWorkflowButton: React.FC<Props> = ({
   onCompleteConsultation,
   onOpenDoctorWorkspace,
 }) => {
-  if (canOpenDoctorWorkspace && (appointment.status === "completed" || appointment.status === "in_consultation")) {
+  const status =
+    (appointment.status as string) === "in_progress" ? "in_consultation" : appointment.status;
+
+  if (canOpenDoctorWorkspace && (status === "completed" || status === "in_consultation")) {
     return (
       <button type="button" className={btnNeutral} disabled={disabled} onClick={onOpenDoctorWorkspace}>
         Рабочее место врача
@@ -39,7 +42,7 @@ export const AppointmentPrimaryWorkflowButton: React.FC<Props> = ({
     );
   }
 
-  if (canUpdateAppointment && (appointment.status === "scheduled" || appointment.status === "confirmed")) {
+  if (canUpdateAppointment && (status === "scheduled" || status === "confirmed")) {
     return (
       <button type="button" className={btnPrimary} disabled={disabled} onClick={onMarkArrived}>
         Принять
@@ -47,7 +50,7 @@ export const AppointmentPrimaryWorkflowButton: React.FC<Props> = ({
     );
   }
 
-  if (canUpdateAppointment && appointment.status === "arrived") {
+  if (canUpdateAppointment && status === "arrived") {
     return (
       <button type="button" className={btnPrimary} disabled={disabled} onClick={onStartConsultation}>
         Начать приём
@@ -55,7 +58,7 @@ export const AppointmentPrimaryWorkflowButton: React.FC<Props> = ({
     );
   }
 
-  if (appointment.status === "in_consultation" && canUpdateAppointment && !canOpenDoctorWorkspace) {
+  if (status === "in_consultation" && canUpdateAppointment && !canOpenDoctorWorkspace) {
     return (
       <button type="button" className={btnPrimary} disabled={disabled} onClick={onCompleteConsultation}>
         Завершить приём

@@ -1,6 +1,7 @@
 import React from "react";
 import type { Appointment, InvoiceSummary, Service } from "../api/appointmentsFlowApi";
 import { coercePriceToNumber } from "../../../shared/lib/money";
+import { getAllServices } from "../../../shared/lib/appointments/getAllServices";
 import { formatSum } from "../../../utils/formatMoney";
 import { AppointmentPrimaryWorkflowButton } from "./AppointmentPrimaryWorkflowButton";
 import { AppointmentBillingActions } from "./AppointmentBillingActions";
@@ -113,7 +114,15 @@ export const AppointmentCard: React.FC<Props> = ({
     appointmentPrice !== null &&
     serviceBasePrice !== null &&
     Math.round(appointmentPrice) !== Math.round(coercePriceToNumber(serviceBasePrice));
-  const assignedServices = appointment.services ?? [];
+  const allServices = getAllServices(appointment, {
+    fallbackBase: service
+      ? {
+          id: service.id,
+          name: service.name,
+          price: appointment.price ?? service.price,
+        }
+      : undefined,
+  });
 
   return (
     <li className="list-none">
@@ -147,20 +156,21 @@ export const AppointmentCard: React.FC<Props> = ({
             <p className="text-[#334155]">
               <span className="text-[#64748b]">Врач:</span> {doctorName}
             </p>
-            <p className="text-[#334155]">
-              <span className="text-[#64748b]">Услуга:</span>{" "}
-              {service
-                ? showFinancialDetails
-                  ? `${service.name} · ${formatSum(coercePriceToNumber(appointmentPrice ?? service.price))}`
-                  : service.name
-                : `#${appointment.serviceId}`}
-            </p>
-            {assignedServices.length > 0 ? (
-              <p className="text-[#334155]">
-                <span className="text-[#64748b]">Назначенные услуги:</span>{" "}
-                {assignedServices.map((row) => row.name).join(", ")}
-              </p>
-            ) : null}
+            <div className="text-[#334155]">
+              <span className="text-[#64748b]">Услуги:</span>
+              {allServices.length > 0 ? (
+                <div className="mt-1 space-y-0.5">
+                  {allServices.map((item) => (
+                    <div key={`${item.serviceId}-${item.isBase ? "b" : "a"}`}>
+                      {item.name}
+                      {showFinancialDetails ? ` — ${formatSum(item.price)}` : ""}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <span> #{appointment.serviceId}</span>
+              )}
+            </div>
             {isPriceManuallyChanged ? (
               <p className="text-xs text-amber-700">
                 <span className="rounded-md bg-amber-100 px-1.5 py-0.5">изменено вручную</span>

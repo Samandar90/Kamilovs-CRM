@@ -36,7 +36,8 @@ import { summarizeAppointments } from "../utils/appointmentSummary";
 import { AppContainer, EmptyState, MoneyInput, PageHeader, PageLoader, SectionCard } from "../../../shared/ui";
 import { primaryActionButtonClass } from "../../../shared/ui/buttonStyles";
 import { Button } from "../../../ui/Button";
-import { coercePriceToNumber, normalizeMoneyInput } from "../../../shared/lib/money";
+import { coercePriceToNumber } from "../../../shared/lib/money";
+import { getAllServices } from "../../../shared/lib/appointments/getAllServices";
 import { formatSum } from "../../../utils/formatMoney";
 
 const secondaryActionButtonClass =
@@ -1051,8 +1052,16 @@ export const AppointmentsPage: React.FC = () => {
           className="w-full max-w-md rounded-[20px] border border-[#e5e7eb] bg-white p-6 shadow-[0_24px_48px_-24px_rgba(15,23,42,0.2)]"
         >
             {(() => {
-              const assignedServices = detailsModal.appointment?.services ?? [];
               const fallbackService = servicesMap[detailsModal.appointment.serviceId];
+              const services = getAllServices(detailsModal.appointment, {
+                fallbackBase: fallbackService
+                  ? {
+                      id: fallbackService.id,
+                      name: fallbackService.name,
+                      price: detailsModal.appointment.price ?? fallbackService.price,
+                    }
+                  : undefined,
+              });
               return (
                 <>
             <h3 className="text-lg font-semibold text-[#111827]">Детали записи</h3>
@@ -1070,10 +1079,13 @@ export const AppointmentsPage: React.FC = () => {
               </p>
               <p>
                 <span className="text-[#6b7280]">Услуга:</span>{" "}
-                {assignedServices.length > 0 ? (
+                {services.length > 0 ? (
                   <span className="block mt-1 space-y-1">
-                    {assignedServices.map((service) => (
-                      <span key={service.serviceId} className="block">
+                    {services.map((service) => (
+                      <span
+                        key={`${service.serviceId}-${service.isBase ? "b" : "a"}`}
+                        className="block"
+                      >
                         {service.name} — {formatSum(coercePriceToNumber(service.price))}
                       </span>
                     ))}
@@ -1194,26 +1206,16 @@ export const AppointmentsPage: React.FC = () => {
           className="w-full max-w-md rounded-[20px] border border-[#e5e7eb] bg-white p-6 shadow-[0_24px_48px_-24px_rgba(15,23,42,0.2)]"
         >
             {(() => {
-              const assignedServices = invoiceModal.appointment.services ?? [];
               const fallbackService = servicesMap[invoiceModal.appointment.serviceId];
-              const services =
-                assignedServices.length > 0
-                  ? assignedServices.map((row) => ({
-                      id: row.serviceId,
-                      name: row.name,
-                      price: coercePriceToNumber(row.price),
-                    }))
-                  : fallbackService
-                    ? [
-                        {
-                          id: fallbackService.id,
-                          name: fallbackService.name,
-                          price: coercePriceToNumber(
-                            invoiceModal.appointment.price ?? fallbackService.price
-                          ),
-                        },
-                      ]
-                    : [];
+              const services = getAllServices(invoiceModal.appointment, {
+                fallbackBase: fallbackService
+                  ? {
+                      id: fallbackService.id,
+                      name: fallbackService.name,
+                      price: invoiceModal.appointment.price ?? fallbackService.price,
+                    }
+                  : undefined,
+              });
               const total = services.reduce((sum, service) => sum + service.price, 0);
               return (
                 <>
@@ -1224,7 +1226,10 @@ export const AppointmentsPage: React.FC = () => {
               ) : (
                 <ul className="space-y-1.5 text-sm text-[#374151]">
                   {services.map((service) => (
-                    <li key={service.id} className="flex items-center justify-between gap-3">
+                    <li
+                      key={`${service.serviceId}-${service.isBase ? "b" : "a"}`}
+                      className="flex items-center justify-between gap-3"
+                    >
                       <span>{service.name}</span>
                       <span className="font-medium tabular-nums text-[#111827]">
                         {formatSum(service.price)}

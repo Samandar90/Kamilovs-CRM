@@ -14,6 +14,7 @@ import { formatDateTimeRu } from "../../../utils/formatDateTime";
 import { formatSum } from "../../../utils/formatMoney";
 import { printReceipt } from "../../../shared/receipt/printReceipt";
 import { buildReceiptHTML } from "../../../shared/receipt/receiptTemplate";
+import { getAllServices } from "../../../shared/lib/appointments/getAllServices";
 import kamilovsClinicLogo from "../../../assets/kamilovs-clinic-logo.png";
 import {
   cashDeskApi,
@@ -534,7 +535,7 @@ export const CashDeskPage: React.FC = () => {
       return;
     }
     const fromAppointments = Object.fromEntries(
-      readyAppointments.map((row) => [row.id, (row.services ?? []).map((s) => s.serviceId)])
+      readyAppointments.map((row) => [row.id, getAllServices(row).map((s) => s.serviceId)])
     );
     setAppointmentServicesMap(fromAppointments);
   }, [token, readyAppointments]);
@@ -718,41 +719,48 @@ export const CashDeskPage: React.FC = () => {
                 />
               ) : (
                 <div className="mt-4 space-y-2.5">
-                  {readyAppointments.map((row) => (
-                    <article
-                      key={row.id}
-                      className="rounded-[14px] border border-[#eef2f7] bg-white px-4 py-3.5"
-                    >
-                      <p className="font-semibold text-[#0f172a]">
-                        {patientsMap[row.patientId] ?? `Пациент #${row.patientId}`}
-                      </p>
-                      <p className="mt-0.5 text-xs text-[#64748b]">
-                        Врач: {doctorsMap[row.doctorId] ?? `#${row.doctorId}`}
-                      </p>
-                      <ul className="mt-2 text-sm text-[#334155]">
-                        {(row.services && row.services.length > 0
-                          ? row.services.map((service) => service.serviceId)
-                          : appointmentServicesMap[row.id] ?? []
-                        ).map((serviceId, idx) => (
-                          <li key={`${row.id}-${serviceId}-${idx}`}>
-                            {servicesMap[serviceId] ??
-                              row.services?.find((s) => s.serviceId === serviceId)?.name ??
-                              `Услуга #${serviceId}`}
-                          </li>
-                        ))}
-                      </ul>
-                      <div className="mt-3 flex justify-end">
-                        <button
-                          type="button"
-                          className="rounded-xl bg-[#22c55e] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#16a34a] disabled:opacity-50"
-                          onClick={() => void createInvoiceForAppointment(row.id)}
-                          disabled={!canOperate || refreshing}
-                        >
-                          Оформить счёт
-                        </button>
-                      </div>
-                    </article>
-                  ))}
+                  {readyAppointments.map((row) => {
+                    const fallbackServices = (appointmentServicesMap[row.id] ?? []).map((serviceId) => ({
+                      serviceId,
+                      name: servicesMap[serviceId] ?? `Услуга #${serviceId}`,
+                      price: 0,
+                    }));
+                    const allServices = getAllServices(row, { fallbackServices });
+                    const total = allServices.reduce((sum, service) => sum + service.price, 0);
+                    return (
+                      <article
+                        key={row.id}
+                        className="rounded-[14px] border border-[#eef2f7] bg-white px-4 py-3.5"
+                      >
+                        <p className="font-semibold text-[#0f172a]">
+                          {patientsMap[row.patientId] ?? `Пациент #${row.patientId}`}
+                        </p>
+                        <p className="mt-0.5 text-xs text-[#64748b]">
+                          Врач: {doctorsMap[row.doctorId] ?? `#${row.doctorId}`}
+                        </p>
+                        <ul className="mt-2 text-sm text-[#334155]">
+                          {allServices.map((service) => (
+                            <li key={`${row.id}-${service.serviceId}-${service.isBase ? "b" : "a"}`}>
+                              {service.name} — {formatSum(service.price)}
+                            </li>
+                          ))}
+                        </ul>
+                        <p className="mt-2 text-sm font-semibold text-[#0f172a]">
+                          Итого: {formatSum(total)}
+                        </p>
+                        <div className="mt-3 flex justify-end">
+                          <button
+                            type="button"
+                            className="rounded-xl bg-[#22c55e] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#16a34a] disabled:opacity-50"
+                            onClick={() => void createInvoiceForAppointment(row.id)}
+                            disabled={!canOperate || refreshing}
+                          >
+                            Оформить счёт
+                          </button>
+                        </div>
+                      </article>
+                    );
+                  })}
                 </div>
               )}
             </SectionCard>

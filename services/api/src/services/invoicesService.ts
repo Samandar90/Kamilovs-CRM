@@ -123,7 +123,7 @@ const resolveLineItemsFromServices = async (
       throw new ApiError(400, `Item at index ${index}: invalid unit price before insert`);
     }
 
-    if (unitPrice <= 0) {
+    if (unitPrice < 0) {
       throw new ApiError(400, `Service ${serviceId} has invalid price`);
     }
 

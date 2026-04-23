@@ -33,7 +33,7 @@ import {
   uiDateToYmd,
 } from "../utils/appointmentFormUtils";
 import { summarizeAppointments } from "../utils/appointmentSummary";
-import { AppContainer, EmptyState, PageHeader, PageLoader, SectionCard } from "../../../shared/ui";
+import { AppContainer, EmptyState, MoneyInput, PageHeader, PageLoader, SectionCard } from "../../../shared/ui";
 import { primaryActionButtonClass } from "../../../shared/ui/buttonStyles";
 import { Button } from "../../../ui/Button";
 import { coercePriceToNumber, normalizeMoneyInput } from "../../../shared/lib/money";
@@ -64,7 +64,7 @@ type CancelModalState = {
 type PriceModalState = {
   open: boolean;
   appointment: Appointment | null;
-  price: string;
+  price: number;
 };
 type ConflictHintState = {
   message: string | null;
@@ -142,7 +142,8 @@ const emptyFullForm = (): FullFormFields => ({
   selectedPatient: null,
   doctorId: "",
   serviceId: "",
-  price: "",
+  price: 0,
+  priceLocked: false,
   date: todayYmd(),
   time: "",
   notes: "",
@@ -213,7 +214,7 @@ export const AppointmentsPage: React.FC = () => {
   const [priceModal, setPriceModal] = React.useState<PriceModalState>({
     open: false,
     appointment: null,
-    price: "",
+    price: 0,
   });
   const [fullConflictHint, setFullConflictHint] = React.useState<ConflictHintState>({
     message: null,
@@ -332,8 +333,8 @@ export const AppointmentsPage: React.FC = () => {
     const selectedService = availableServices.find((service) => service.id === sid);
     if (!selectedService) return;
     setFullForm((prev) => {
-      if (prev.price.trim().length > 0) return prev;
-      return { ...prev, price: String(Math.round(coercePriceToNumber(selectedService.price))) };
+      if (prev.priceLocked) return prev;
+      return { ...prev, price: Math.round(coercePriceToNumber(selectedService.price)) };
     });
   }, [fullModalOpen, fullForm.serviceId, availableServices]);
 
@@ -482,9 +483,7 @@ export const AppointmentsPage: React.FC = () => {
       return;
     }
     const servicePrice = coercePriceToNumber(servicesMap[serviceId]?.price ?? 0);
-    const parsedPrice = form.price.trim()
-      ? normalizeMoneyInput(form.price) ?? Number.NaN
-      : servicePrice;
+    const parsedPrice = form.priceLocked ? form.price : servicePrice;
     if (!Number.isFinite(parsedPrice) || parsedPrice < 0) {
       setError("Цена должна быть числом больше или равна 0");
       return;
@@ -691,8 +690,8 @@ export const AppointmentsPage: React.FC = () => {
 
   const updateAppointmentPrice = async () => {
     if (!token || !priceModal.appointment || !canEditAppointmentPrice) return;
-    const price = normalizeMoneyInput(priceModal.price);
-    if (price === null || price < 0) {
+    const price = priceModal.price;
+    if (!Number.isFinite(price) || price < 0) {
       setError("Цена должна быть числом больше или равна 0");
       return;
     }
@@ -704,7 +703,7 @@ export const AppointmentsPage: React.FC = () => {
         priceModal.appointment.id,
         Math.round(price)
       );
-      setPriceModal({ open: false, appointment: null, price: "" });
+      setPriceModal({ open: false, appointment: null, price: 0 });
       await loadData();
       setToast("Цена записи обновлена");
     } catch (requestError) {
@@ -924,11 +923,9 @@ export const AppointmentsPage: React.FC = () => {
                       setPriceModal({
                         open: true,
                         appointment,
-                        price: String(
-                          Math.round(
-                            coercePriceToNumber(
-                              appointment.price ?? servicesMap[appointment.serviceId]?.price ?? 0
-                            )
+                        price: Math.round(
+                          coercePriceToNumber(
+                            appointment.price ?? servicesMap[appointment.serviceId]?.price ?? 0
                           )
                         ),
                       })
@@ -1100,7 +1097,7 @@ export const AppointmentsPage: React.FC = () => {
       {canEditAppointmentPrice && priceModal.open && priceModal.appointment ? (
         <Modal
           isOpen={priceModal.open}
-          onClose={() => setPriceModal({ open: false, appointment: null, price: "" })}
+          onClose={() => setPriceModal({ open: false, appointment: null, price: 0 })}
           className="w-full max-w-md rounded-[20px] border border-[#e5e7eb] bg-white p-6 shadow-[0_24px_48px_-24px_rgba(15,23,42,0.2)]"
         >
           <h3 className="text-lg font-semibold text-[#111827]">Изменить цену</h3>
@@ -1111,13 +1108,10 @@ export const AppointmentsPage: React.FC = () => {
             <label className="mb-1 block text-xs uppercase tracking-wide text-[#6b7280]">
               Цена
             </label>
-            <input
-              type="number"
-              min={0}
+            <MoneyInput
+              mode="integer"
               value={priceModal.price}
-              onChange={(event) =>
-                setPriceModal((prev) => ({ ...prev, price: event.target.value }))
-              }
+              onChange={(next) => setPriceModal((prev) => ({ ...prev, price: next }))}
               className="h-11 w-full rounded-[10px] border border-[#e5e7eb] bg-[#f9fafb] px-3 text-sm text-[#111827] outline-none transition focus:border-[#22c55e] focus:bg-white focus:ring-1 focus:ring-[#22c55e]/25"
               disabled={isSubmitting}
             />
@@ -1126,7 +1120,7 @@ export const AppointmentsPage: React.FC = () => {
             <button
               type="button"
               className="rounded-xl border border-[#e5e7eb] bg-white px-4 py-2 text-sm font-medium text-[#111827] transition hover:bg-[#f3f4f6] active:scale-[0.97]"
-              onClick={() => setPriceModal({ open: false, appointment: null, price: "" })}
+              onClick={() => setPriceModal({ open: false, appointment: null, price: 0 })}
               disabled={isSubmitting}
             >
               Закрыть

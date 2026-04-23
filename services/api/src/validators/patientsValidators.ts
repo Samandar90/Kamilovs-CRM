@@ -58,7 +58,12 @@ export const validateCreatePatient = (
   _res: Response,
   next: NextFunction
 ) => {
-  const { fullName, phone, birthDate, gender, source, notes } = req.body ?? {};
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  if (body.birthDate === "") {
+    body.birthDate = null;
+  }
+  req.body = body;
+  const { fullName, phone, birthDate, gender, source, notes } = body;
 
   if (!fullName || typeof fullName !== "string" || fullName.trim() === "") {
     throw new ApiError(400, "Field 'fullName' is required and must be a non-empty string");
@@ -82,14 +87,26 @@ export const validateCreatePatient = (
     throw new ApiError(400, "Field 'birthDate' must be YYYY-MM-DD, null, or undefined");
   }
 
-  if (!(gender === undefined || gender === null || allowedGenders.has(gender))) {
+  if (
+    !(
+      gender === undefined ||
+      gender === null ||
+      (typeof gender === "string" && allowedGenders.has(gender))
+    )
+  ) {
     throw new ApiError(
       400,
       "Field 'gender' must be one of: male, female, null, or undefined"
     );
   }
 
-  if (!(source === undefined || source === null || PATIENT_SOURCES.has(source))) {
+  if (
+    !(
+      source === undefined ||
+      source === null ||
+      (typeof source === "string" && PATIENT_SOURCES.has(source))
+    )
+  ) {
     throw new ApiError(
       400,
       "Field 'source' must be one of: instagram, telegram, advertising, referral, other, null, or undefined"
@@ -108,7 +125,12 @@ export const validateUpdatePatient = (
   _res: Response,
   next: NextFunction
 ) => {
-  const { fullName, phone, birthDate, gender, source, notes } = req.body ?? {};
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  if (body.birthDate === "") {
+    body.birthDate = null;
+  }
+  req.body = body;
+  const { fullName, phone, birthDate, gender, source, notes } = body;
 
   if (
     fullName !== undefined &&
@@ -135,14 +157,26 @@ export const validateUpdatePatient = (
     throw new ApiError(400, "Field 'birthDate' must be YYYY-MM-DD, null, or undefined");
   }
 
-  if (!(gender === undefined || gender === null || allowedGenders.has(gender))) {
+  if (
+    !(
+      gender === undefined ||
+      gender === null ||
+      (typeof gender === "string" && allowedGenders.has(gender))
+    )
+  ) {
     throw new ApiError(
       400,
       "Field 'gender' must be one of: male, female, null, or undefined"
     );
   }
 
-  if (!(source === undefined || source === null || PATIENT_SOURCES.has(source))) {
+  if (
+    !(
+      source === undefined ||
+      source === null ||
+      (typeof source === "string" && PATIENT_SOURCES.has(source))
+    )
+  ) {
     throw new ApiError(
       400,
       "Field 'source' must be one of: instagram, telegram, advertising, referral, other, null, or undefined"

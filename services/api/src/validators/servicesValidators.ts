@@ -16,13 +16,13 @@ export const validateServiceIdParam = (req: Request, _res: Response, next: NextF
   next();
 };
 
-const parsePositiveFiniteNumber = (value: unknown): number | null => {
-  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+const parseNonNegativeFiniteNumber = (value: unknown): number | null => {
+  if (typeof value === "number" && Number.isFinite(value) && value >= 0) {
     return value;
   }
   if (typeof value === "string" && value.trim() !== "") {
-    const n = Number(value);
-    if (Number.isFinite(n) && n > 0) {
+    const n = Number(value.trim().replace(/\s/g, "").replace(",", "."));
+    if (Number.isFinite(n) && n >= 0) {
       return n;
     }
   }
@@ -78,9 +78,9 @@ export const validateCreateService = (req: Request, _res: Response, next: NextFu
     );
   }
 
-  const price = parsePositiveFiniteNumber(body.price);
+  const price = parseNonNegativeFiniteNumber(body.price);
   if (price === null) {
-    throw new ApiError(400, "Field 'price' must be a number greater than 0");
+    throw new ApiError(400, "Field 'price' must be a number greater than or equal to 0");
   }
 
   const duration = parsePositiveIntMinutes(body.duration);
@@ -136,9 +136,9 @@ export const validateUpdateService = (req: Request, _res: Response, next: NextFu
 
   if (body.price !== undefined) {
     provided += 1;
-    const price = parsePositiveFiniteNumber(body.price);
+    const price = parseNonNegativeFiniteNumber(body.price);
     if (price === null) {
-      throw new ApiError(400, "Field 'price' must be a number greater than 0");
+      throw new ApiError(400, "Field 'price' must be a number greater than or equal to 0");
     }
     out.price = price;
   }

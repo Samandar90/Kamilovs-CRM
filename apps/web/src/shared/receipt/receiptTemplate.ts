@@ -1,3 +1,5 @@
+import { formatMoney } from "../lib/formatMoney";
+
 const TELEGRAM_LINK = "https://t.me/kamilovsclinic";
 const TELEGRAM_QR_URL =
   "https://api.qrserver.com/v1/create-qr-code/?size=80x80&data=" +
@@ -29,8 +31,7 @@ const escapeHtml = (value: unknown): string =>
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
 
-const formatMoneyUz = (value: number): string =>
-  `${new Intl.NumberFormat("ru-RU").format(value)} сум`;
+const formatMoneyUz = (value: number): string => `${formatMoney(value)} сум`;
 
 export function buildReceiptHTML(data: ReceiptTemplateData): string {
   const itemsHtml =

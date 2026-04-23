@@ -2,6 +2,7 @@ import React from "react";
 import { CalendarPlus } from "lucide-react";
 import type { Patient, Service } from "../api/appointmentsFlowApi";
 import { coercePriceToNumber } from "../../../shared/lib/money";
+import { MoneyInput } from "../../../shared/ui/MoneyInput";
 import { formatSum } from "../../../utils/formatMoney";
 import { Modal } from "../../../components/ui/Modal";
 import { PatientAutocompleteInput } from "./PatientAutocompleteInput";
@@ -19,7 +20,9 @@ export type FullFormFields = {
   selectedPatient: Patient | null;
   doctorId: string;
   serviceId: string;
-  price: string;
+  price: number;
+  /** false — цена подставляется из выбранной услуги; true — вручную */
+  priceLocked: boolean;
   date: string;
   time: string;
   notes: string;
@@ -189,7 +192,7 @@ export const AppointmentCreateModal: React.FC<Props> = ({
                 id="create-service"
                 className={serviceLocked ? selDis : sel}
                 value={form.serviceId}
-                onChange={(e) => updateForm({ serviceId: e.target.value, price: "" })}
+                onChange={(e) => updateForm({ serviceId: e.target.value, price: 0, priceLocked: false })}
                 disabled={serviceLocked}
               >
                 <option value="">
@@ -218,14 +221,12 @@ export const AppointmentCreateModal: React.FC<Props> = ({
               <label htmlFor="create-price" className={modalLabelClass}>
                 Цена
               </label>
-              <input
+              <MoneyInput
                 id="create-price"
-                type="number"
-                min={0}
+                mode="integer"
                 className={inp}
-                placeholder="0"
                 value={form.price}
-                onChange={(e) => updateForm({ price: e.target.value })}
+                onChange={(next) => updateForm({ price: next, priceLocked: true })}
               />
             </div>
 

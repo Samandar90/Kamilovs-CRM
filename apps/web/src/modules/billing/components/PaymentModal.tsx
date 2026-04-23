@@ -7,7 +7,7 @@ import {
   type PaymentMethod,
 } from "../api/cashDeskApi";
 import { formatSum } from "../../../utils/formatMoney";
-import { normalizeMoneyInput } from "../../../shared/lib/money";
+import { MoneyInput } from "../../../shared/ui/MoneyInput";
 
 const METHOD_OPTIONS: { value: PaymentMethod; label: string }[] = [
   { value: "cash", label: "Наличные" },
@@ -37,7 +37,7 @@ export const PaymentModal: React.FC<Props> = ({
   invoiceStatus,
   onPaid,
 }) => {
-  const [amount, setAmount] = useState("");
+  const [amount, setAmount] = useState(0);
   const [method, setMethod] = useState<PaymentMethod>("cash");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -49,7 +49,7 @@ export const PaymentModal: React.FC<Props> = ({
     setError(null);
     setSubmitting(false);
     setMethod("cash");
-    setAmount(maxAmount > 0 ? String(maxAmount) : "");
+    setAmount(maxAmount > 0 ? Math.round(maxAmount * 100) / 100 : 0);
     setCheckingShift(true);
     void cashDeskApi
       .getCurrentShift(token)
@@ -60,12 +60,6 @@ export const PaymentModal: React.FC<Props> = ({
       .finally(() => setCheckingShift(false));
   }, [open, maxAmount, token]);
 
-  const parseAmount = (): number | null => {
-    const n = normalizeMoneyInput(amount);
-    if (n === null || n <= 0) return null;
-    return Math.round(n * 100) / 100;
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -73,8 +67,8 @@ export const PaymentModal: React.FC<Props> = ({
       setError("Нет авторизации");
       return;
     }
-    const value = parseAmount();
-    if (value === null) {
+    const value = Math.round(amount * 100) / 100;
+    if (!Number.isFinite(value) || value <= 0) {
       setError("Введите сумму больше 0");
       return;
     }
@@ -142,16 +136,15 @@ export const PaymentModal: React.FC<Props> = ({
           <label htmlFor="payment-amount" className="text-sm font-medium text-slate-300">
             Сумма
           </label>
-          <input
+          <MoneyInput
             id="payment-amount"
-            type="text"
-            inputMode="decimal"
+            mode="decimal"
+            min={0}
+            max={maxAmount > 0 ? maxAmount : undefined}
             className={inputClass}
             value={amount}
-            onChange={(e) => setAmount(e.target.value)}
+            onChange={setAmount}
             disabled={submitting || draftBlocked || noShiftBlocked || checkingShift}
-            placeholder="0"
-            autoComplete="off"
           />
           {maxAmount > 0 && !draftBlocked ? (
             <div className="mt-2 flex flex-wrap gap-2">
@@ -161,7 +154,7 @@ export const PaymentModal: React.FC<Props> = ({
                 disabled={submitting || noShiftBlocked || checkingShift}
                 onClick={() => {
                   setError(null);
-                  setAmount(String(maxAmount));
+                  setAmount(Math.round(maxAmount * 100) / 100);
                 }}
               >
                 Оплатить полностью
@@ -173,7 +166,7 @@ export const PaymentModal: React.FC<Props> = ({
                 onClick={() => {
                   setError(null);
                   const half = Math.round((maxAmount / 2) * 100) / 100;
-                  setAmount(String(half));
+                  setAmount(half);
                 }}
               >
                 50%

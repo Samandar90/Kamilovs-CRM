@@ -15,7 +15,6 @@ import { formatSum } from "../../../utils/formatMoney";
 import { printReceipt } from "../../../shared/receipt/printReceipt";
 import { buildReceiptHTML } from "../../../shared/receipt/receiptTemplate";
 import kamilovsClinicLogo from "../../../assets/kamilovs-clinic-logo.png";
-import { normalizeMoneyInput } from "../../../shared/lib/money";
 import {
   cashDeskApi,
   type CashRegisterEntry,
@@ -40,6 +39,7 @@ import {
   EmptyState,
   FormField,
   ModalShell,
+  MoneyInput,
   PageHeader,
   PageLoader,
   SectionCard,
@@ -104,14 +104,14 @@ export const CashDeskPage: React.FC = () => {
 
   const [refundEntry, setRefundEntry] = React.useState<CashRegisterEntry | null>(null);
   const [refundReason, setRefundReason] = React.useState("");
-  const [refundAmountInput, setRefundAmountInput] = React.useState("");
+  const [refundAmountInput, setRefundAmountInput] = React.useState(0);
   const [refundSubmitting, setRefundSubmitting] = React.useState(false);
 
-  const [openingBalanceInput, setOpeningBalanceInput] = React.useState("0");
+  const [openingBalanceInput, setOpeningBalanceInput] = React.useState(0);
   const [openShiftSubmitting, setOpenShiftSubmitting] = React.useState(false);
   const [closeShiftSubmitting, setCloseShiftSubmitting] = React.useState(false);
 
-  const [payAmount, setPayAmount] = React.useState("");
+  const [payAmount, setPayAmount] = React.useState(0);
   const [payMethod, setPayMethod] = React.useState<PaymentMethod>("cash");
   const [paySubmitting, setPaySubmitting] = React.useState(false);
   const [payModalError, setPayModalError] = React.useState<string | null>(null);
@@ -344,16 +344,14 @@ export const CashDeskPage: React.FC = () => {
     setPayModalError(null);
     const rem =
       Math.round((inv.total - inv.paidAmount + Number.EPSILON) * 100) / 100;
-    setPayAmount(rem > 0 ? String(rem) : "");
+    setPayAmount(rem > 0 ? rem : 0);
     setPayMethod("cash");
     setPayModalInvoice(inv);
   };
 
   const submitPayment = async () => {
     if (!token || !canOperate || !payModalInvoice) return;
-    const parsedRaw = normalizeMoneyInput(payAmount);
-    const amountToPay =
-      parsedRaw != null ? Math.round(parsedRaw * 100) / 100 : Number.NaN;
+    const amountToPay = Math.round(payAmount * 100) / 100;
     const maxPay =
       Math.round(
         (payModalInvoice.total - payModalInvoice.paidAmount + Number.EPSILON) * 100
@@ -399,7 +397,7 @@ export const CashDeskPage: React.FC = () => {
 
   const submitOpenShift = async () => {
     if (!token || !canOperate) return;
-    const bal = normalizeMoneyInput(openingBalanceInput) ?? Number.NaN;
+    const bal = Math.round(openingBalanceInput * 100) / 100;
     if (!Number.isFinite(bal) || bal < 0) {
       setError("Введите неотрицательный остаток на начало смены.");
       return;
@@ -411,7 +409,7 @@ export const CashDeskPage: React.FC = () => {
       // eslint-disable-next-line no-console
       console.log("[cash] open shift ok", { shiftId: opened.id, openingBalance: bal });
       setModalOpenShift(false);
-      setOpeningBalanceInput("0");
+      setOpeningBalanceInput(0);
       await loadCore("refresh");
       setToast("Смена открыта");
     } catch (requestError) {
@@ -468,8 +466,8 @@ export const CashDeskPage: React.FC = () => {
       return;
     }
     const maxAmt = maxRefundForEntry(refundEntry);
-    const parsedAmount = normalizeMoneyInput(refundAmountInput);
-    if (parsedAmount === null || parsedAmount <= 0) {
+    const parsedAmount = Math.round(refundAmountInput * 100) / 100;
+    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
       setError("Некорректная сумма возврата");
       return;
     }
@@ -486,7 +484,7 @@ export const CashDeskPage: React.FC = () => {
       });
       setRefundEntry(null);
       setRefundReason("");
-      setRefundAmountInput("");
+      setRefundAmountInput(0);
       await loadCore("refresh");
       await loadEntries();
       setToast("Возврат оформлен");
@@ -578,7 +576,7 @@ export const CashDeskPage: React.FC = () => {
                       className="rounded-xl bg-[#22c55e] px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-[#16a34a]"
                       onClick={() => {
                         setError(null);
-                        setOpeningBalanceInput("0");
+                        setOpeningBalanceInput(0);
                         setModalOpenShift(true);
                       }}
                       disabled={anyBusy}
@@ -980,7 +978,7 @@ export const CashDeskPage: React.FC = () => {
                               onClick={() => {
                                 setRefundReason("");
                                 const max = maxRefundForEntry(selectedEntry);
-                                setRefundAmountInput(max > 0 ? String(max) : "");
+                                setRefundAmountInput(max > 0 ? max : 0);
                                 setRefundEntry(selectedEntry);
                               }}
                             >
@@ -1085,13 +1083,12 @@ export const CashDeskPage: React.FC = () => {
         }
       >
         <FormField label="Стартовый остаток (сум)">
-          <input
-            type="number"
+          <MoneyInput
+            mode="decimal"
             min={0}
-            step="0.01"
             className="mt-1.5 w-full rounded-xl border border-[#e2e8f0] bg-white px-3 py-2 text-[#334155]"
             value={openingBalanceInput}
-            onChange={(e) => setOpeningBalanceInput(e.target.value)}
+            onChange={setOpeningBalanceInput}
             disabled={openShiftSubmitting}
           />
         </FormField>
@@ -1198,28 +1195,14 @@ export const CashDeskPage: React.FC = () => {
             ) : null}
 
             <FormField label="Сумма">
-              <input
-                type="text"
-                inputMode="decimal"
-                autoComplete="off"
+              <MoneyInput
+                mode="decimal"
+                min={0}
+                max={maxPayModal > 0 ? maxPayModal : undefined}
                 className="mt-1.5 w-full rounded-xl border border-[#e2e8f0] bg-white px-3 py-2.5 text-base text-[#111827] placeholder:text-[#94a3b8] focus:border-[#16a34a] focus:outline-none focus:ring-1 focus:ring-[#16a34a]"
                 value={payAmount}
-                onChange={(e) => {
-                  const raw = e.target.value;
-                  const n = Number(raw.replace(",", ".").replace(/\s/g, ""));
-                  if (raw === "" || raw === "," || raw === ".") {
-                    setPayAmount(raw);
-                    return;
-                  }
-                  if (!Number.isFinite(n)) {
-                    setPayAmount(raw);
-                    return;
-                  }
-                  if (n > maxPayModal + 1e-9) setPayAmount(String(maxPayModal));
-                  else setPayAmount(raw);
-                }}
+                onChange={setPayAmount}
                 disabled={paySubmitting}
-                placeholder="0"
               />
               {maxPayModal > 0 ? (
                 <div className="mt-2 flex flex-wrap gap-2">
@@ -1229,7 +1212,7 @@ export const CashDeskPage: React.FC = () => {
                     disabled={paySubmitting || !shiftOpen}
                     onClick={() => {
                       setPayModalError(null);
-                      setPayAmount(String(maxPayModal));
+                      setPayAmount(maxPayModal);
                     }}
                   >
                     Оплатить полностью
@@ -1241,7 +1224,7 @@ export const CashDeskPage: React.FC = () => {
                     onClick={() => {
                       setPayModalError(null);
                       const half = Math.round((maxPayModal / 2) * 100) / 100;
-                      setPayAmount(String(half));
+                      setPayAmount(half);
                     }}
                   >
                     50%
@@ -1279,14 +1262,14 @@ export const CashDeskPage: React.FC = () => {
         entry={refundEntry}
         invoiceLabel={refundEntry ? entryInvoiceLabel(refundEntry) : "—"}
         maxRefundable={refundEntry ? maxRefundForEntry(refundEntry) : 0}
-        amountInput={refundAmountInput}
+        amount={refundAmountInput}
         reason={refundReason}
         submitting={refundSubmitting}
         onAmountChange={setRefundAmountInput}
         onReasonChange={setRefundReason}
         onClose={() => {
           setRefundEntry(null);
-          setRefundAmountInput("");
+          setRefundAmountInput(0);
         }}
         onConfirm={() => void submitRefund()}
       />

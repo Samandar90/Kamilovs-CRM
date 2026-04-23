@@ -12,6 +12,7 @@ import {
   refreshServicesCache,
 } from "../../../shared/cache/servicesCache";
 import { normalizeMoneyInput } from "../../../shared/lib/money";
+import { MoneyInput } from "../../../shared/ui/MoneyInput";
 import { formatSum } from "../../../utils/formatMoney";
 
 const SERVICE_CATEGORIES = [
@@ -53,7 +54,7 @@ type DoctorOption = {
 type ServiceFormState = {
   name: string;
   category: string;
-  price: string;
+  price: number;
   duration: string;
   active: boolean;
   doctorIds: number[];
@@ -62,7 +63,7 @@ type ServiceFormState = {
 const initialFormState: ServiceFormState = {
   name: "",
   category: "other",
-  price: "",
+  price: 0,
   duration: "30",
   active: true,
   doctorIds: [],
@@ -135,7 +136,7 @@ export const ServicesPage: React.FC = () => {
       category: SERVICE_CATEGORIES.includes(service.category as (typeof SERVICE_CATEGORIES)[number])
         ? service.category
         : "other",
-      price: String(service.price),
+      price: Math.round(Number(service.price)),
       duration: String(service.duration),
       active: service.active,
       doctorIds: [...service.doctorIds],
@@ -154,15 +155,15 @@ export const ServicesPage: React.FC = () => {
     if (!token || !canManage) return;
     const name = formState.name.trim();
     const category = formState.category.trim();
-    const price = normalizeMoneyInput(formState.price);
+    const price = formState.price;
     const durationRaw = normalizeMoneyInput(formState.duration);
     const duration = durationRaw != null ? Math.round(durationRaw) : NaN;
     if (!name) {
       setError("Укажите название услуги");
       return;
     }
-    if (price === null || price <= 0) {
-      setError("Цена должна быть числом больше 0");
+    if (!Number.isFinite(price) || price < 0) {
+      setError("Цена должна быть числом не меньше 0");
       return;
     }
     if (!Number.isInteger(duration) || duration <= 0) {
@@ -413,13 +414,11 @@ export const ServicesPage: React.FC = () => {
               </label>
               <label className="text-sm text-[#334155]">
                 Цена (сум)
-                <input
-                  type="number"
-                  min={0.01}
-                  step="0.01"
+                <MoneyInput
+                  mode="integer"
                   className="mt-1 h-11 w-full rounded-[10px] border border-[#e2e8f0] bg-[#f8fafc] px-3 text-sm text-[#0f172a] outline-none transition focus:border-[#16a34a] focus:bg-white focus:ring-1 focus:ring-[#16a34a]/25"
                   value={formState.price}
-                  onChange={(event) => setFormState((prev) => ({ ...prev, price: event.target.value }))}
+                  onChange={(next) => setFormState((prev) => ({ ...prev, price: next }))}
                   disabled={isSaving}
                 />
               </label>

@@ -2,6 +2,7 @@ import React from "react";
 import type { CashRegisterEntry } from "../api/cashDeskApi";
 import { formatSum } from "../../../utils/formatMoney";
 import { Modal } from "../../../components/ui/Modal";
+import { MoneyInput } from "../../../shared/ui/MoneyInput";
 
 type Props = {
   open: boolean;
@@ -9,10 +10,10 @@ type Props = {
   invoiceLabel: string;
   /** Максимум к возврату по этой операции */
   maxRefundable: number;
-  amountInput: string;
+  amount: number;
   reason: string;
   submitting: boolean;
-  onAmountChange: (value: string) => void;
+  onAmountChange: (value: number) => void;
   onReasonChange: (value: string) => void;
   onClose: () => void;
   onConfirm: () => void;
@@ -23,7 +24,7 @@ export const RefundModal: React.FC<Props> = ({
   entry,
   invoiceLabel,
   maxRefundable,
-  amountInput,
+  amount,
   reason,
   submitting,
   onAmountChange,
@@ -57,14 +58,13 @@ export const RefundModal: React.FC<Props> = ({
           </p>
           <label className="mt-4 block text-sm text-[#334155]">
             Сумма возврата (сум)
-            <input
-              type="number"
-              min={0.01}
-              step="0.01"
+            <MoneyInput
+              mode="decimal"
               max={maxRefundable}
+              min={0}
               className="mt-1.5 w-full rounded-xl border border-[#e2e8f0] bg-white px-3 py-2 text-[#334155]"
-              value={amountInput}
-              onChange={(e) => onAmountChange(e.target.value)}
+              value={amount}
+              onChange={onAmountChange}
               disabled={submitting}
             />
           </label>

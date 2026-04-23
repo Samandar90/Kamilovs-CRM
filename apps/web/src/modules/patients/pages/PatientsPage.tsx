@@ -23,11 +23,8 @@ import { Modal } from "../../../components/ui/Modal";
 import type { Appointment } from "../../appointments/api/appointmentsFlowApi";
 import type { InvoiceSummary } from "../../billing/api/cashDeskApi";
 import { formatSum } from "../../../utils/formatMoney";
-import {
-  formatPhoneMaskInput,
-  formatStoredPhoneForInput,
-  phoneToApiValue,
-} from "../../../utils/phoneInput";
+import { PhoneInput } from "../../../shared/ui/PhoneInput";
+import { phoneToApiValue, storedPhoneToNormalized } from "../../../utils/phoneInput";
 
 type PatientSource = "instagram" | "telegram" | "advertising" | "referral" | "other";
 
@@ -294,7 +291,7 @@ export const PatientsPage: React.FC = () => {
     setEditingPatientId(patient.id);
     setFormState({
       fullName: patient.fullName,
-      phone: formatStoredPhoneForInput(patient.phone),
+      phone: storedPhoneToNormalized(patient.phone),
       birthDate: patient.birthDate ? patient.birthDate.slice(0, 10) : "",
       gender: patient.gender === "female" ? "female" : "male",
       source: patient.source ?? "",
@@ -650,19 +647,15 @@ export const PatientsPage: React.FC = () => {
                 </Field>
                 <div>
                   <Field label="Телефон" required>
-                    <input
-                      type="tel"
-                      inputMode="tel"
-                      autoComplete="tel"
+                    <PhoneInput
                       value={formState.phone}
-                      onChange={(e) =>
+                      onChange={(normalized) =>
                         setFormState((prev) => ({
                           ...prev,
-                          phone: formatPhoneMaskInput(e.target.value),
+                          phone: normalized,
                         }))
                       }
                       className={fieldInputClass}
-                      placeholder="+998 (__) ___-__-__"
                     />
                   </Field>
                   {patientFormMeta.duplicatePhone ? (

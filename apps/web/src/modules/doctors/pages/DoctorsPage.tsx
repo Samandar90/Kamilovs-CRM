@@ -6,6 +6,8 @@ import { hasPermission } from "../../../auth/permissions";
 import { ListEmptyState } from "../../../components/ui/ListEmptyState";
 import { MultiSelect } from "../../../components/ui/MultiSelect";
 import { Modal } from "../../../components/ui/Modal";
+import { PhoneInput } from "../../../shared/ui/PhoneInput";
+import { phoneToApiValue, storedPhoneToNormalized } from "../../../utils/phoneInput";
 
 type Doctor = {
   id: number;
@@ -41,6 +43,69 @@ const initialFormState: DoctorFormState = {
   birthDate: "",
   active: true,
   serviceIds: [],
+};
+
+const DOCTOR_SERVICES_PREVIEW_COUNT = 2;
+
+type DoctorServicesChipsProps = {
+  doctorId: number;
+  serviceIds: number[];
+  serviceNameById: Record<number, string>;
+};
+
+const DoctorServicesChips: React.FC<DoctorServicesChipsProps> = ({
+  doctorId,
+  serviceIds,
+  serviceNameById,
+}) => {
+  const [expanded, setExpanded] = React.useState(false);
+
+  if (serviceIds.length === 0) {
+    return <p className="mt-1 text-sm text-[#94a3b8]">Услуги пока не назначены</p>;
+  }
+
+  const hiddenCount = Math.max(0, serviceIds.length - DOCTOR_SERVICES_PREVIEW_COUNT);
+  const visibleServiceIds = expanded ? serviceIds : serviceIds.slice(0, DOCTOR_SERVICES_PREVIEW_COUNT);
+
+  return (
+    <div
+      className={`mt-2 overflow-hidden transition-all duration-300 ease-out ${
+        expanded ? "max-h-64" : "max-h-10"
+      }`}
+    >
+      <div className="flex flex-wrap gap-2">
+        {visibleServiceIds.map((serviceId) => (
+          <span
+            key={`${doctorId}-${serviceId}`}
+            className="inline-flex items-center rounded-full border border-[#dbeafe] bg-[#eff6ff] px-2.5 py-0.5 text-xs font-medium text-[#1d4ed8]"
+          >
+            {serviceNameById[serviceId] ?? `#${serviceId}`}
+          </span>
+        ))}
+
+        {!expanded && hiddenCount > 0 ? (
+          <button
+            type="button"
+            onClick={() => setExpanded(true)}
+            className="inline-flex items-center rounded-full border border-slate-200 bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600 transition hover:bg-slate-200"
+            aria-label={`Показать еще ${hiddenCount} услуг`}
+          >
+            +{hiddenCount}
+          </button>
+        ) : null}
+
+        {expanded && hiddenCount > 0 ? (
+          <button
+            type="button"
+            onClick={() => setExpanded(false)}
+            className="inline-flex items-center rounded-full border border-slate-200 bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600 transition hover:bg-slate-200"
+          >
+            Свернуть
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
 };
 
 export const DoctorsPage: React.FC = () => {
@@ -105,7 +170,7 @@ export const DoctorsPage: React.FC = () => {
       name: doctor.name,
       speciality: doctor.speciality,
       percent: String(doctor.percent),
-      phone: doctor.phone ?? "",
+      phone: storedPhoneToNormalized(doctor.phone),
       birthDate: doctor.birth_date ?? "",
       active: doctor.active,
       serviceIds: doctor.serviceIds ?? [],
@@ -141,7 +206,11 @@ export const DoctorsPage: React.FC = () => {
         name: formState.name.trim(),
         speciality: formState.speciality.trim(),
         percent: Number(formState.percent),
-        phone: formState.phone.trim() || null,
+        phone: (() => {
+          const apiPhone = phoneToApiValue(formState.phone);
+          const digits = apiPhone.replace(/\D/g, "");
+          return digits.length >= 10 ? apiPhone : null;
+        })(),
         birth_date: formState.birthDate || null,
         active: formState.active,
         serviceIds: formState.serviceIds,
@@ -275,20 +344,11 @@ export const DoctorsPage: React.FC = () => {
 
                 <div className="mt-3">
                   <p className="text-xs uppercase tracking-wide text-[#94a3b8]">Услуги</p>
-                  {(doctor.serviceIds ?? []).length > 0 ? (
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {(doctor.serviceIds ?? []).map((serviceId) => (
-                        <span
-                          key={`${doctor.id}-${serviceId}`}
-                          className="inline-flex items-center rounded-full border border-[#dbeafe] bg-[#eff6ff] px-2.5 py-0.5 text-xs font-medium text-[#1d4ed8]"
-                        >
-                          {serviceNameById[serviceId] ?? `#${serviceId}`}
-                        </span>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="mt-1 text-sm text-[#94a3b8]">Услуги пока не назначены</p>
-                  )}
+                  <DoctorServicesChips
+                    doctorId={doctor.id}
+                    serviceIds={doctor.serviceIds ?? []}
+                    serviceNameById={serviceNameById}
+                  />
                 </div>
 
                 {canManage && (
@@ -375,11 +435,11 @@ export const DoctorsPage: React.FC = () => {
               </label>
               <label className="text-sm text-[#334155]">
                 Телефон
-                <input
-                  type="tel"
+                <PhoneInput
+                  defaultCountry998Prefix={false}
                   className="mt-1 h-11 w-full rounded-[10px] border border-[#e2e8f0] bg-[#f8fafc] px-3 text-sm text-[#0f172a] outline-none transition focus:border-[#16a34a] focus:bg-white focus:ring-1 focus:ring-[#16a34a]/25"
                   value={formState.phone}
-                  onChange={(event) => setFormState((prev) => ({ ...prev, phone: event.target.value }))}
+                  onChange={(normalized) => setFormState((prev) => ({ ...prev, phone: normalized }))}
                   placeholder="+998 90 123 45 67"
                   aria-label="Телефон врача"
                   disabled={isSaving}

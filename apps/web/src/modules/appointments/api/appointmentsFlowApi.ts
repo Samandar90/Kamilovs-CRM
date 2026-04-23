@@ -266,7 +266,7 @@ export const appointmentsFlowApi = {
         priceSource.appointmentPriceOverride ?? priceSource.servicePrice;
       const price = cleanMoney(rawPrice);
 
-      if (!price || Number.isNaN(price)) {
+      if (Number.isNaN(price) || price < 0) {
         throw new Error("Invalid price before sending invoice");
       }
 

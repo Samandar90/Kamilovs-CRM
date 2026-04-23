@@ -6,8 +6,10 @@ import type { Doctor, Patient, Service } from "../../api/appointmentsFlowApi";
 import { appointmentsFlowApi } from "../../api/appointmentsFlowApi";
 import { PatientAutocompleteInput } from "../../components/PatientAutocompleteInput";
 import { formatSum } from "../../../../utils/formatMoney";
-import { coercePriceToNumber, normalizeMoneyInput } from "../../../../shared/lib/money";
-import { formatPhoneMaskInput, phoneToApiValue } from "../../../../utils/phoneInput";
+import { coercePriceToNumber } from "../../../../shared/lib/money";
+import { MoneyInput } from "../../../../shared/ui/MoneyInput";
+import { PhoneInput } from "../../../../shared/ui/PhoneInput";
+import { phoneToApiValue } from "../../../../utils/phoneInput";
 import { normalizeDateTimeForApi, nextQuarterHourTimeHm, todayYmd } from "../../utils/appointmentFormUtils";
 import {
   quickModalComboboxInputClass,
@@ -49,7 +51,7 @@ export const AppointmentQuickCreateModal: React.FC<AppointmentQuickCreateModalPr
   const [services, setServices] = useState<Service[]>([]);
   const [loadingServices, setLoadingServices] = useState(false);
   const [serviceId, setServiceId] = useState<number | "">("");
-  const [price, setPrice] = useState("");
+  const [price, setPrice] = useState(0);
 
   const [date, setDate] = useState(todayYmd());
   const [time, setTime] = useState(nextQuarterHourTimeHm());
@@ -73,7 +75,7 @@ export const AppointmentQuickCreateModal: React.FC<AppointmentQuickCreateModalPr
     setDoctorId("");
     setServices([]);
     setServiceId("");
-    setPrice("");
+    setPrice(0);
     setDate(todayYmd());
     setTime(nextQuarterHourTimeHm());
     setFormError(null);
@@ -193,10 +195,10 @@ export const AppointmentQuickCreateModal: React.FC<AppointmentQuickCreateModalPr
           ? services[0]
           : null;
     if (!selectedService) {
-      setPrice("");
+      setPrice(0);
       return;
     }
-    setPrice(String(Math.round(coercePriceToNumber(selectedService.price))));
+    setPrice(Math.round(coercePriceToNumber(selectedService.price)));
   }, [serviceId, services]);
 
   const resolvedServiceId: number | null =
@@ -304,12 +306,7 @@ export const AppointmentQuickCreateModal: React.FC<AppointmentQuickCreateModalPr
       patientId: selectedPatient.id,
       doctorId,
       serviceId: sid,
-      price: (() => {
-        if (!price) return undefined;
-        const n = normalizeMoneyInput(price);
-        if (n === null) return undefined;
-        return Math.max(0, Math.round(n));
-      })(),
+      price: Math.max(0, Math.round(price)),
       startAt,
       status: "scheduled" as const,
       diagnosis: null,
@@ -414,14 +411,10 @@ export const AppointmentQuickCreateModal: React.FC<AppointmentQuickCreateModalPr
                   </label>
                   <label className="block text-sm text-[#374151]">
                     Телефон
-                    <input
+                    <PhoneInput
                       id="quick-mini-phone"
-                      type="tel"
-                      inputMode="tel"
-                      autoComplete="tel"
-                      placeholder="+998 (__) ___-__-__"
                       value={miniPhone}
-                      onChange={(e) => setMiniPhone(formatPhoneMaskInput(e.target.value))}
+                      onChange={setMiniPhone}
                       disabled={submitting || miniSaving}
                       className={`${quickModalComboboxInputClass} mt-1 block w-full bg-white`}
                     />
@@ -559,13 +552,12 @@ export const AppointmentQuickCreateModal: React.FC<AppointmentQuickCreateModalPr
                 <label htmlFor="quick-price" className={quickModalLabelClass}>
                   Цена
                 </label>
-                <input
+                <MoneyInput
                   id="quick-price"
-                  type="number"
-                  min={0}
+                  mode="integer"
                   className={qInp}
                   value={price}
-                  onChange={(e) => setPrice(e.target.value)}
+                  onChange={setPrice}
                   disabled={submitting || loadingServices || services.length === 0}
                 />
               </div>

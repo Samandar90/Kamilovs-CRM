@@ -1,5 +1,7 @@
 import React from "react";
 import { Modal } from "../../../components/ui/Modal";
+import { PhoneInput } from "../../../shared/ui/PhoneInput";
+import { phoneToApiValue } from "../../../utils/phoneInput";
 import type { Patient, PatientCreateInput } from "../api/appointmentsFlowApi";
 import { appointmentsFlowApi } from "../api/appointmentsFlowApi";
 
@@ -43,19 +45,16 @@ export const CreatePatientModal: React.FC<Props> = ({
       onError("Имя пациента должно быть не короче 5 символов");
       return;
     }
-    const phoneTrim = phone.trim();
-    if (!phoneTrim) {
-      onError("Укажите телефон");
-      return;
-    }
-    if (!birthDate) {
-      onError("Укажите дату рождения");
+    const apiPhone = phoneToApiValue(phone);
+    const digits = apiPhone.replace(/\D/g, "");
+    if (digits.length < 10 || digits.length > 15) {
+      onError("Укажите корректный телефон");
       return;
     }
     const payload: PatientCreateInput = {
       fullName: name,
-      phone: phoneTrim,
-      birthDate,
+      phone: apiPhone,
+      birthDate: birthDate.trim() || null,
       gender,
     };
     setSaving(true);
@@ -88,9 +87,9 @@ export const CreatePatientModal: React.FC<Props> = ({
         </label>
         <label className="block text-sm text-[#374151]">
           Телефон
-          <input
+          <PhoneInput
             value={phone}
-            onChange={(e) => setPhone(e.target.value)}
+            onChange={setPhone}
             className="mt-1 h-11 w-full rounded-[10px] border border-[#e5e7eb] bg-[#f9fafb] px-3 text-sm text-[#111827] outline-none transition focus:border-[#22c55e] focus:bg-white focus:ring-1 focus:ring-[#22c55e]/25"
           />
         </label>

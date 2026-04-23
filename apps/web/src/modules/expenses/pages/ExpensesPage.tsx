@@ -2,7 +2,7 @@ import React from "react";
 import { Plus, RefreshCw, Trash2, Pencil } from "lucide-react";
 import { formatDateTimeRu } from "../../../utils/formatDateTime";
 import { formatSum } from "../../../utils/formatMoney";
-import { normalizeMoneyInput } from "../../../shared/lib/money";
+import { MoneyInput } from "../../../shared/ui/MoneyInput";
 import { expensesApi, type Expense } from "../api/expensesApi";
 import {
   ActionButtons,
@@ -23,7 +23,7 @@ import { Button } from "../../../ui/Button";
 const EXPENSE_CATEGORIES = ["Аренда", "Зарплата", "Маркетинг", "Расходники", "Коммунальные", "Прочее"] as const;
 
 type ExpenseFormState = {
-  amount: string;
+  amount: number;
   category: string;
   description: string;
   paidAt: string;
@@ -38,7 +38,7 @@ const toDatetimeLocal = (iso: string): string => {
 };
 
 const makeDefaultForm = (): ExpenseFormState => ({
-  amount: "",
+  amount: 0,
   category: EXPENSE_CATEGORIES[0],
   description: "",
   paidAt: toDatetimeLocal(new Date().toISOString()),
@@ -164,7 +164,7 @@ export const ExpensesPage: React.FC = () => {
   const openEditModal = (row: Expense) => {
     setEditing(row);
     setForm({
-      amount: String(row.amount),
+      amount: Math.round(row.amount),
       category: row.category,
       description: row.description ?? "",
       paidAt: toDatetimeLocal(row.paidAt),
@@ -182,8 +182,8 @@ export const ExpensesPage: React.FC = () => {
     setSaving(true);
     setError(null);
     try {
-      const amountNum = normalizeMoneyInput(form.amount);
-      if (amountNum === null || amountNum <= 0) {
+      const amountNum = Math.round(form.amount);
+      if (!Number.isFinite(amountNum) || amountNum <= 0) {
         setError("Укажите корректную сумму");
         return;
       }
@@ -433,13 +433,11 @@ export const ExpensesPage: React.FC = () => {
       >
         <form id="expense-form" className="space-y-4" onSubmit={(event) => void submitExpense(event)}>
           <FormField label="Сумма">
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              required
+            <MoneyInput
+              mode="integer"
+              min={0}
               value={form.amount}
-              onChange={(event) => setForm((prev) => ({ ...prev, amount: event.target.value }))}
+              onChange={(next) => setForm((prev) => ({ ...prev, amount: next }))}
               className="h-10 w-full rounded-xl border border-[#e2e8f0] px-3 text-sm outline-none focus:border-[#16a34a]"
             />
           </FormField>

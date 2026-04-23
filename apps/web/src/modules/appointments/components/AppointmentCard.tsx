@@ -53,6 +53,8 @@ type Props = {
   onCreateInvoice: () => void;
   onCancelAppointment: () => void;
   onEditPrice: () => void;
+  canHardDeleteAppointment: boolean;
+  onDeleteAppointment: () => void;
   /** Коммерческая цена: регистратура / менеджмент (согласовано с PATCH /appointments/:id/price). */
   canEditAppointmentPrice: boolean;
   onOpenDoctorWorkspace: () => void;
@@ -78,6 +80,8 @@ export const AppointmentCard: React.FC<Props> = ({
   onCreateInvoice,
   onCancelAppointment,
   onEditPrice,
+  canHardDeleteAppointment,
+  onDeleteAppointment,
   canEditAppointmentPrice,
   onOpenDoctorWorkspace,
   onCardClick,
@@ -210,6 +214,16 @@ export const AppointmentCard: React.FC<Props> = ({
                   onClick={onEditPrice}
                 >
                   Изменить цену
+                </button>
+              ) : null}
+              {canHardDeleteAppointment ? (
+                <button
+                  type="button"
+                  className="rounded-lg border border-rose-300 bg-rose-100 px-3 py-1.5 text-xs font-medium text-rose-800 shadow-sm transition hover:bg-rose-200"
+                  disabled={isSubmitting}
+                  onClick={onDeleteAppointment}
+                >
+                  Удалить
                 </button>
               ) : null}
             </ActionButtons>

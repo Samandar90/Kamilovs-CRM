@@ -161,6 +161,7 @@ export const AppointmentsPage: React.FC = () => {
   const canUpdateApptStatus = canUpdateAppointments(ur);
   const readBilling = canReadBilling(ur);
   const canDoClinical = ur === "doctor" || ur === "nurse";
+  const canHardDeleteAppointment = ur === "superadmin";
   const canCreateInvoice = !!ur && hasPermission(ur, "invoices", "create");
 
   const [appointments, setAppointments] = React.useState<Appointment[]>([]);
@@ -737,6 +738,23 @@ export const AppointmentsPage: React.FC = () => {
     }
   };
 
+  const deleteAppointment = async (appointment: Appointment) => {
+    if (!token || !canHardDeleteAppointment) return;
+    const confirmed = window.confirm("Вы уверены? Это действие нельзя отменить");
+    if (!confirmed) return;
+    setIsSubmitting(true);
+    setError(null);
+    try {
+      await appointmentsFlowApi.deleteAppointment(token, appointment.id);
+      await loadData();
+      setToast("Запись удалена");
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Ошибка удаления записи");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const updateAppointmentPrice = async () => {
     if (!token || !priceModal.appointment || !canEditAppointmentPrice) return;
     const price = priceModal.price;
@@ -980,6 +998,8 @@ export const AppointmentsPage: React.FC = () => {
                       })
                     }
                     canEditAppointmentPrice={canEditAppointmentPrice}
+                    canHardDeleteAppointment={canHardDeleteAppointment}
+                    onDeleteAppointment={() => void deleteAppointment(appointment)}
                     onOpenDoctorWorkspace={() => openConsultation(appointment)}
                     onCardClick={() => setDetailsModal({ open: true, appointment })}
                   />

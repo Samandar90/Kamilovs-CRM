@@ -538,11 +538,11 @@ export class AppointmentsService {
   }
 
   async delete(auth: AuthTokenPayload, id: number): Promise<boolean> {
+    if (auth.role !== "superadmin") {
+      throw new ApiError(403, "Только superadmin может полностью удалять записи");
+    }
     const current = await this.appointmentsRepository.findById(id);
     if (!current) {
-      return false;
-    }
-    if (!canReadAppointment(auth, current)) {
       return false;
     }
     const ok = await this.appointmentsRepository.delete(id);

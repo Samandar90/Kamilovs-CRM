@@ -363,7 +363,93 @@ export class PostgresAppointmentsRepository implements IAppointmentsRepository {
   }
 
   async delete(id: number): Promise<boolean> {
-    return this.softDelete(id);
+    const client = await dbPool.connect();
+    try {
+      await client.query("BEGIN");
+
+      const appointmentResult = await client.query<{ id: number }>(
+        `
+          SELECT id
+          FROM appointments
+          WHERE id = $1
+          FOR UPDATE
+        `,
+        [id]
+      );
+      if (appointmentResult.rows.length === 0) {
+        await client.query("ROLLBACK");
+        return false;
+      }
+
+      await client.query(
+        `
+          DELETE FROM appointment_services
+          WHERE appointment_id = $1
+        `,
+        [id]
+      );
+
+      const invoiceIdsResult = await client.query<{ id: number }>(
+        `
+          SELECT id
+          FROM invoices
+          WHERE appointment_id = $1
+        `,
+        [id]
+      );
+      const invoiceIds = invoiceIdsResult.rows.map((row) => Number(row.id));
+
+      if (invoiceIds.length > 0) {
+        await client.query(
+          `
+            UPDATE cash_register_entries
+            SET payment_id = NULL
+            WHERE payment_id IN (
+              SELECT p.id FROM payments p WHERE p.invoice_id = ANY($1::bigint[])
+            )
+          `,
+          [invoiceIds]
+        );
+        await client.query(
+          `
+            DELETE FROM payments
+            WHERE invoice_id = ANY($1::bigint[])
+          `,
+          [invoiceIds]
+        );
+        await client.query(
+          `
+            DELETE FROM invoice_items
+            WHERE invoice_id = ANY($1::bigint[])
+          `,
+          [invoiceIds]
+        );
+        await client.query(
+          `
+            DELETE FROM invoices
+            WHERE id = ANY($1::bigint[])
+          `,
+          [invoiceIds]
+        );
+      }
+
+      const deletedAppointment = await client.query<{ id: number }>(
+        `
+          DELETE FROM appointments
+          WHERE id = $1
+          RETURNING id
+        `,
+        [id]
+      );
+
+      await client.query("COMMIT");
+      return deletedAppointment.rows.length > 0;
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   async softDelete(id: number): Promise<boolean> {

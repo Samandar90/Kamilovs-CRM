@@ -261,6 +261,15 @@ export const appointmentsFlowApi = {
       body: reason?.trim() ? { reason: reason.trim() } : {},
     }),
 
+  deleteAppointment: (token: string, appointmentId: number) =>
+    requestJson<{ success: boolean; deleted: boolean; id: number }>(
+      `/api/appointments/${appointmentId}`,
+      {
+        method: "DELETE",
+        token,
+      }
+    ),
+
   listPatients: (token: string, init?: { signal?: AbortSignal; search?: string }) =>
     requestJson<Patient[]>(
       init?.search?.trim()

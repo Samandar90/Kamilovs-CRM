@@ -113,6 +113,20 @@ export class MockAppointmentsRepository implements IAppointmentsRepository {
   async delete(id: number): Promise<boolean> {
     const db = getMockDb();
     const before = db.appointments.length;
+    const invoiceIds = db.invoices
+      .filter((item) => item.appointmentId === id && item.deletedAt === null)
+      .map((item) => item.id);
+    const paymentIds = db.payments
+      .filter((item) => invoiceIds.includes(item.invoiceId))
+      .map((item) => item.id);
+    db.appointmentServices = db.appointmentServices.filter(
+      (item) => item.appointmentId !== id
+    );
+    db.invoiceItems = db.invoiceItems.filter(
+      (item) => !invoiceIds.includes(item.invoiceId)
+    );
+    db.payments = db.payments.filter((item) => !paymentIds.includes(item.id));
+    db.invoices = db.invoices.filter((item) => !invoiceIds.includes(item.id));
     db.appointments = db.appointments.filter((item) => item.id !== id);
     return db.appointments.length < before;
   }

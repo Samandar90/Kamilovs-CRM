@@ -240,6 +240,9 @@ export const deleteAppointmentController = async (
   res: Response
 ) => {
   const auth = getAuthPayload(req);
+  if (auth.role !== "superadmin") {
+    throw new ApiError(403, "Только superadmin может полностью удалять записи");
+  }
   const id = Number(req.params.id);
   const deleted = await services.appointments.delete(auth, id);
 

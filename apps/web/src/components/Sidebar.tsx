@@ -173,7 +173,7 @@ export const Sidebar: React.FC = () => {
   const nextDelay = () => stagger++ * 52;
 
   return (
-    <aside className="z-20 flex h-full w-[260px] shrink-0 flex-col overflow-x-hidden border-r border-slate-200/80 bg-gradient-to-b from-slate-50 to-slate-100/90">
+    <aside className="z-20 hidden h-full w-[260px] shrink-0 flex-col overflow-x-hidden border-r border-slate-200/80 bg-gradient-to-b from-slate-50 to-slate-100/90 md:flex">
       <div
         className="crm-sidebar-enter px-4 pb-3 pt-5"
         style={{ animationDelay: `${nextDelay()}ms` }}

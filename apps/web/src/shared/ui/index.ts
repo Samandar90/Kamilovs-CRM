@@ -13,4 +13,5 @@ export { MoneyInput } from "./MoneyInput";
 export { CollapsibleChips } from "./CollapsibleChips";
 export { StatusBadge } from "./StatusBadge";
 export { ActionButtons, EditActionButton, DeleteActionButton } from "./ActionButtons";
+export { MobileBottomNav } from "./MobileBottomNav";
 

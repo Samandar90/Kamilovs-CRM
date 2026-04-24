@@ -38,12 +38,12 @@ export const DashboardTodaySummary: React.FC<DashboardTodaySummaryProps> = ({
   ];
 
   return (
-    <div className="rounded-2xl border border-[#e2e8f0] bg-white p-6 shadow-sm transition-all duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] hover:shadow-md">
+    <div className="rounded-2xl border border-[#e2e8f0] bg-white p-4 shadow-sm md:p-6 md:transition-all md:duration-200 md:ease-[cubic-bezier(0.22,1,0.36,1)] md:hover:shadow-md">
       <div className="flex items-center justify-between">
-        <p className="text-[13px] font-semibold uppercase tracking-wider text-[#64748b]">Сегодня</p>
-        <p className="text-xs text-[#94a3b8]">Сводка смены</p>
+        <p className="text-[12px] font-semibold uppercase tracking-wider text-[#64748b] md:text-[13px]">Сегодня</p>
+        <p className="hidden text-xs text-[#94a3b8] sm:block">Сводка смены</p>
       </div>
-      <ul className="mt-5 flex flex-col gap-3">
+      <ul className="mt-3 flex flex-col gap-2 md:mt-5 md:gap-3">
         {rowMeta.map((row, i) => {
           const Icon = row.icon;
           return (

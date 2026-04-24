@@ -40,6 +40,7 @@ import { DashboardTodaySummary } from "../components/DashboardTodaySummary";
 import { dashboardApi } from "../api/dashboardApi";
 import { useDashboardData } from "../hooks/useDashboardData";
 import { primaryActionButtonClass } from "../../../shared/ui/buttonStyles";
+import { cn } from "../../../ui/utils/cn";
 import { getServicesCached } from "../../../shared/cache/servicesCache";
 import { requestJson } from "../../../api/http";
 
@@ -306,20 +307,25 @@ export const DashboardPage: React.FC = () => {
   });
 
   return (
-    <div className="page-enter space-y-6 rounded-2xl bg-slate-50/70 p-6 md:space-y-7 md:p-8">
-      <header className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-[#0f172a] md:text-3xl">{headerTitle}</h1>
-          <p className="mt-1 text-sm text-[#64748b]">{headerSubtitle}</p>
-          <p className="mt-1 text-sm text-[#94a3b8]">Сегодня, {todayLabel.charAt(0).toUpperCase() + todayLabel.slice(1)}</p>
+    <div
+      className={cn(
+        "page-enter w-full max-w-none space-y-4 rounded-2xl bg-slate-50/70 p-4 md:space-y-7 md:p-8",
+        canQuickPatientBooking && readAppointments && "max-md:pb-[calc(4rem+3.5rem+0.75rem)]"
+      )}
+    >
+      <header className="flex flex-wrap items-end justify-between gap-2 md:gap-3">
+        <div className="min-w-0 flex-1">
+          <h1 className="text-xl font-semibold tracking-tight text-[#0f172a] md:text-2xl lg:text-3xl">{headerTitle}</h1>
+          <p className="mt-0.5 hidden text-sm text-[#64748b] sm:block">{headerSubtitle}</p>
+          <p className="mt-0.5 text-xs text-[#94a3b8] md:text-sm">Сегодня, {todayLabel.charAt(0).toUpperCase() + todayLabel.slice(1)}</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           {canQuickPatientBooking ? (
             <button
               type="button"
               onClick={openQuickModal}
               disabled={!readAppointments}
-              className={primaryActionButtonClass}
+              className={`${primaryActionButtonClass} max-md:hidden`}
             >
               <CalendarPlus className="h-4 w-4" />
               + Быстрая запись пациента
@@ -330,7 +336,7 @@ export const DashboardPage: React.FC = () => {
             onClick={() => {
               void reload();
             }}
-            className="crm-btn-interactive inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[#e5e7eb] bg-[#f1f5f9] text-[#64748b] shadow-sm transition-colors duration-200 ease-out hover:bg-[#e2e8f0] hover:text-[#0f172a]"
+            className="crm-btn-interactive inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[#e5e7eb] bg-[#f1f5f9] text-[#64748b] shadow-sm transition-transform duration-100 ease-out active:scale-[0.98] max-md:active:scale-[0.98] md:h-11 md:w-11 md:transition-colors md:duration-200 md:ease-out md:hover:bg-[#e2e8f0] md:hover:text-[#0f172a]"
             disabled={loading}
             aria-label="Обновить"
             title="Обновить"
@@ -351,10 +357,18 @@ export const DashboardPage: React.FC = () => {
           {toast}
         </div>
       ) : null}
-      {showSetupBanner ? <DashboardSetupBanner steps={[{ label: "Добавьте пациента", to: "/patients" }, { label: "Создайте запись", to: "/appointments" }, { label: "Выставьте счет", to: "/billing/invoices" }]} /> : null}
+      {showSetupBanner ? (
+        <DashboardSetupBanner
+          steps={[
+            { label: "Добавить пациента", to: "/patients", done: patients.length > 0, icon: UserPlus },
+            { label: "Создать запись", to: "/appointments", done: appointments.length > 0, icon: CalendarPlus },
+            { label: "Выставить счёт", to: "/billing/invoices", done: invoices.length > 0, icon: FileText },
+          ]}
+        />
+      ) : null}
 
-      <section className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.7fr)_minmax(340px,1fr)] xl:items-stretch">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:auto-rows-fr">
+      <section className="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1.7fr)_minmax(340px,1fr)] xl:gap-5 xl:items-stretch">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 xl:auto-rows-fr">
           <DashboardCard
             title="Выручка сегодня"
             subtitle={readBilling && !loading ? "Сумма оплат за день" : undefined}
@@ -364,7 +378,9 @@ export const DashboardPage: React.FC = () => {
             loading={loading}
             valueMuted={!readBilling && !loading}
             iconTone="emerald"
-            className="min-h-[152px] p-5"
+            revenueHighlight={readBilling}
+            revenueAmount={revenueToday}
+            className="min-h-[140px] p-4 sm:min-h-[152px] sm:p-5"
           />
           <DashboardCard
             title="Записи сегодня"
@@ -435,7 +451,7 @@ export const DashboardPage: React.FC = () => {
         )}
       </section>
 
-      <section className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+      <section className="grid grid-cols-1 gap-3 md:gap-6 xl:grid-cols-3">
         <div className="xl:col-span-2">
           <DashboardTodaySummary
             loading={loading}
@@ -449,8 +465,8 @@ export const DashboardPage: React.FC = () => {
 
       <DashboardQuickActions items={quickActionItems} />
 
-      <section className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-        <div className="rounded-2xl border border-[#e2e8f0] bg-white p-6 shadow-sm backdrop-blur-sm transition-all duration-200 hover:shadow-md">
+      <section className="grid grid-cols-1 gap-3 md:gap-6 xl:grid-cols-2">
+        <div className="rounded-2xl border border-[#e2e8f0] bg-white p-4 shadow-sm backdrop-blur-sm md:p-6 md:transition-all md:duration-200 md:hover:shadow-md">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-base font-semibold text-[#111827]">Ближайшие записи сегодня</h2>
             <Link to="/appointments" className="text-xs font-semibold text-[#6366f1] hover:text-[#4f46e5]">
@@ -470,7 +486,10 @@ export const DashboardPage: React.FC = () => {
                 const busy = actionPendingById[a.id];
                 const hasInvoice = Boolean(invoiceByAppointment[a.id]);
                 return (
-                  <div key={a.id} className="rounded-xl border border-[#e5e7eb] bg-[#fafafa] p-3 transition hover:-translate-y-1 hover:shadow-[0_14px_34px_-20px_rgba(15,23,42,0.12)]">
+                  <div
+                    key={a.id}
+                    className="rounded-xl border border-[#e5e7eb] bg-[#fafafa] p-3 md:transition md:hover:-translate-y-1 md:hover:shadow-[0_14px_34px_-20px_rgba(15,23,42,0.12)]"
+                  >
                     <div className="grid grid-cols-1 gap-2 md:grid-cols-[80px_1fr_1fr_1fr_auto] md:items-center">
                       <div className="text-sm font-semibold text-[#111827]">
                         {new Date(a.startAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}
@@ -519,8 +538,8 @@ export const DashboardPage: React.FC = () => {
           )}
         </div>
 
-        <div className="space-y-6">
-          <div className="rounded-2xl border border-[#e2e8f0] bg-white p-4 shadow-sm backdrop-blur-sm transition-all duration-200 hover:shadow-md sm:p-5">
+        <div className="space-y-3 md:space-y-6">
+          <div className="rounded-2xl border border-[#e2e8f0] bg-white p-4 shadow-sm backdrop-blur-sm sm:p-5 md:transition-all md:duration-200 md:hover:shadow-md">
             <h2 className="mb-2 text-base font-semibold text-[#111827]">Последние оплаты</h2>
             {!readBilling ? (
               <DashboardEmptyState icon={CreditCard} title="Нет доступа" description="Оплаты доступны ролям с правами биллинга" />
@@ -545,7 +564,7 @@ export const DashboardPage: React.FC = () => {
             )}
           </div>
 
-          <div className="rounded-2xl border border-[#e2e8f0] bg-white p-6 shadow-sm backdrop-blur-sm transition-all duration-200 hover:shadow-md">
+          <div className="rounded-2xl border border-[#e2e8f0] bg-white p-4 shadow-sm backdrop-blur-sm md:p-6 md:transition-all md:duration-200 md:hover:shadow-md">
             <div className="mb-3 flex items-center justify-between">
               <h2 className="text-base font-semibold text-[#111827]">Долги пациентов</h2>
               <Link to="/billing/invoices" className="text-xs font-semibold text-[#6366f1] hover:text-[#4f46e5]">
@@ -580,6 +599,19 @@ export const DashboardPage: React.FC = () => {
         </div>
       </section>
 
+      {canQuickPatientBooking && readAppointments ? (
+        <button
+          type="button"
+          onClick={openQuickModal}
+          className="fixed bottom-16 left-0 right-0 z-[90] flex w-full justify-center px-4 transition-transform duration-100 ease-out active:scale-[0.98] md:hidden"
+          aria-label="Быстрая запись пациента"
+        >
+          <span className="flex min-h-[48px] w-full max-w-none items-center justify-center gap-2 rounded-[14px] bg-emerald-600 px-4 text-sm font-semibold text-white shadow-[0_8px_24px_-8px_rgba(5,150,105,0.45)]">
+            <CalendarPlus className="h-5 w-5 shrink-0" strokeWidth={2} aria-hidden />
+            + Быстрая запись пациента
+          </span>
+        </button>
+      ) : null}
       {canQuickPatientBooking ? (
         <AppointmentQuickCreateModal
           open={quickModalOpen}

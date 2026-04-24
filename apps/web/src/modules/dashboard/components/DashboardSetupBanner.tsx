@@ -1,52 +1,58 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { ChevronRight, Sparkles } from "lucide-react";
+import { Check, ChevronRight } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 
 export type SetupStep = {
   label: string;
   to: string;
+  done?: boolean;
+  icon: LucideIcon;
 };
 
 type DashboardSetupBannerProps = {
   steps: SetupStep[];
 };
 
-export const DashboardSetupBanner: React.FC<DashboardSetupBannerProps> = ({
-  steps,
-}) => {
+export const DashboardSetupBanner: React.FC<DashboardSetupBannerProps> = ({ steps }) => {
   if (steps.length === 0) return null;
 
+  const doneCount = steps.filter((s) => s.done).length;
+  const total = steps.length;
+
   return (
-    <div className="dashboard-card-enter relative overflow-hidden rounded-2xl border border-[#e5e7eb] bg-white p-6 shadow-[0_4px_24px_-8px_rgba(15,23,42,0.08)] transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] hover:-translate-y-[3px] hover:shadow-[0_12px_40px_-16px_rgba(15,23,42,0.12)]">
-      <div className="relative flex flex-col gap-4 sm:flex-row sm:items-start sm:gap-6">
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-indigo-100 bg-indigo-50 text-[#6366f1]">
-          <Sparkles className="h-5 w-5" strokeWidth={1.75} />
-        </div>
-        <div className="min-w-0 flex-1">
-          <h3 className="text-base font-semibold text-[#0f172a]">Система ещё не настроена</h3>
-          <p className="mt-1 text-sm text-[#64748b]">
-            Пройдите шаги ниже — каждый пункт ведёт в нужный раздел.
-          </p>
-          <ol className="mt-4 space-y-2">
-            {steps.map((step, i) => (
-              <li key={step.to}>
-                <Link
-                  to={step.to}
-                  className="group flex items-center justify-between gap-3 rounded-xl border border-[#e5e7eb] bg-[#f8fafc] px-4 py-3 text-left text-sm font-medium text-[#0f172a] transition-all duration-200 hover:border-[#e2e8f0] hover:bg-white hover:shadow-sm active:scale-[0.99]"
-                >
-                  <span className="flex items-center gap-3">
-                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-[#e5e7eb] bg-white text-xs font-semibold text-[#64748b]">
-                      {i + 1}
-                    </span>
-                    {step.label}
-                  </span>
-                  <ChevronRight className="h-4 w-4 shrink-0 text-[#94a3b8] transition-transform group-hover:translate-x-0.5 group-hover:text-[#6366f1]" />
-                </Link>
-              </li>
-            ))}
-          </ol>
-        </div>
+    <div className="dashboard-card-enter rounded-2xl border border-slate-200/90 bg-white p-3 shadow-sm md:p-5 md:shadow-[0_4px_24px_-8px_rgba(15,23,42,0.08)] md:transition-all md:duration-300 md:ease-[cubic-bezier(0.22,1,0.36,1)] md:hover:-translate-y-[2px] md:hover:shadow-[0_12px_40px_-16px_rgba(15,23,42,0.12)]">
+      <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
+        <h3 className="text-xs font-semibold tracking-tight text-slate-900 md:text-sm">Первые шаги</h3>
+        <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium tabular-nums text-slate-600">
+          {doneCount}/{total} выполнено
+        </span>
       </div>
+      <ul className="mt-1 divide-y divide-slate-100">
+        {steps.map((step) => {
+          const Icon = step.icon;
+          return (
+            <li key={step.to}>
+              <Link
+                to={step.to}
+                className="flex min-h-[48px] items-center justify-between gap-3 py-2.5 transition-transform duration-100 ease-out active:scale-[0.98] md:py-3 md:transition-colors md:duration-150 md:active:scale-100"
+              >
+                <span className="flex min-w-0 flex-1 items-center gap-3">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200/90 bg-slate-50 text-slate-600">
+                    <Icon className="h-[18px] w-[18px]" strokeWidth={1.75} aria-hidden />
+                  </span>
+                  <span className="min-w-0 truncate text-[13px] font-medium text-slate-800">{step.label}</span>
+                </span>
+                {step.done ? (
+                  <Check className="h-4 w-4 shrink-0 text-emerald-500" strokeWidth={2.25} aria-hidden />
+                ) : (
+                  <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" strokeWidth={2} aria-hidden />
+                )}
+              </Link>
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 };

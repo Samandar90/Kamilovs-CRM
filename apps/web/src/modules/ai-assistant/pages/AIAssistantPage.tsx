@@ -41,6 +41,13 @@ export const AIAssistantPage = () => {
   const [chatError, setChatError] = useState<string | null>(null);
   const [scrollPulse, setScrollPulse] = useState(0);
   const [showClearedPlaceholder, setShowClearedPlaceholder] = useState(false);
+  const [quickSummary, setQuickSummary] = useState<{
+    cards: Array<{ key: string; label: string; value: string }>;
+    recommendationText: string;
+  } | null>(null);
+  const [quickLoading, setQuickLoading] = useState(false);
+  const [quickError, setQuickError] = useState<string | null>(null);
+  const [activeQuickAction, setActiveQuickAction] = useState<"revenue" | "patients" | "load" | null>(null);
 
   const chatRef = useRef<HTMLDivElement>(null);
   const scrollRafRef = useRef(0);
@@ -98,6 +105,61 @@ export const AIAssistantPage = () => {
       setMessages([]);
     });
   }, []);
+
+  const runQuickAction = useCallback(async (kind: "revenue" | "patients" | "load") => {
+    setActiveQuickAction(kind);
+    setQuickError(null);
+    if (!quickSummary) {
+      setQuickLoading(true);
+      try {
+        const summary = await aiAssistantService.summary();
+        setQuickSummary({
+          cards: summary.cards.map((c) => ({ key: c.key, label: c.label, value: c.value })),
+          recommendationText: summary.recommendationText,
+        });
+      } catch {
+        setQuickError("Не удалось получить данные аналитики.");
+        setQuickLoading(false);
+        return;
+      } finally {
+        setQuickLoading(false);
+      }
+    }
+  }, [quickSummary]);
+
+  const quickActionView = (() => {
+    if (!activeQuickAction) return null;
+    if (quickLoading) return <p className="text-sm text-slate-500">Загрузка данных…</p>;
+    if (quickError) return <p className="text-sm text-rose-600">{quickError}</p>;
+    if (!quickSummary) return null;
+
+    const byKey = (key: string) => quickSummary.cards.find((c) => c.key === key);
+    if (activeQuickAction === "revenue") {
+      return (
+        <div className="space-y-1.5 text-sm">
+          <p className="font-semibold text-slate-900">{byKey("revenueToday")?.value ?? "Нет данных"}</p>
+          <p className="text-slate-600">{byKey("revenue7d")?.label}: {byKey("revenue7d")?.value ?? "—"}</p>
+        </div>
+      );
+    }
+    if (activeQuickAction === "patients") {
+      return (
+        <div className="space-y-1.5 text-sm">
+          <p className="font-semibold text-slate-900">{byKey("appointmentsToday")?.value ?? "Нет данных"}</p>
+          <p className="text-slate-600">{byKey("appointmentsToday")?.label ?? "Записи сегодня"}</p>
+        </div>
+      );
+    }
+    return (
+      <div className="space-y-1.5 text-sm">
+        <p className="font-semibold text-slate-900">{byKey("noShow30d")?.value ?? "Нет данных"}</p>
+        <p className="text-slate-600">{byKey("noShow30d")?.label ?? "Нагрузка"}</p>
+        {quickSummary.recommendationText ? (
+          <p className="mt-2 text-xs text-slate-500">{quickSummary.recommendationText}</p>
+        ) : null}
+      </div>
+    );
+  })();
 
   const handleInputFocus = useCallback(() => {
     requestAnimationFrame(() => {
@@ -227,6 +289,37 @@ export const AIAssistantPage = () => {
           <div className="flex min-w-0 flex-1 flex-col lg:min-h-0">
             <div className="shrink-0 space-y-5">
               <AIAssistantHeader trailing={clearChatButton} />
+              <section className="rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-sm">
+                <h2 className="text-sm font-semibold text-slate-900">Быстрые команды</h2>
+                <div className="mt-3 grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void runQuickAction("revenue")}
+                    className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    Выручка
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void runQuickAction("patients")}
+                    className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    Пациенты
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void runQuickAction("load")}
+                    className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    Нагрузка
+                  </button>
+                </div>
+                {quickActionView ? (
+                  <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+                    {quickActionView}
+                  </div>
+                ) : null}
+              </section>
               <QuickPromptChips
                 sectionTitle="Попробуйте спросить"
                 chips={quickChips}

@@ -34,12 +34,17 @@ export type { AIAssistantAskResponse, ClinicFactsSnapshot, SummaryCard } from ".
 
 const FALLBACK_CRM = "Не удалось получить данные CRM";
 const UNSUPPORTED_REPLY = "Я работаю только с медициной и системой CRM.";
+const YEAR_QUERY_PATTERN = /(какой\s+сейчас\s+год|какой\s+год\s+сейчас|сейчас\s+какой\s+год|текущий\s+год)/i;
 const DATE_QUERY_PATTERN =
   /(какое\s+сегодня\s+число|какое\s+число\s+сегодня|какая\s+сегодня\s+дата|какая\s+дата|сегодняшн(?:яя|ее)\s+дата|сегодняшн(?:ее|яя)\s+число|какой\s+сегодня\s+день)/i;
 
-function buildTodayDateAnswer(): string {
+function getTashkentDateInfo(): { year: string; fullDate: string } {
   const now = new Date();
-  const formatted = new Intl.DateTimeFormat("ru-RU", {
+  const year = new Intl.DateTimeFormat("ru-RU", {
+    year: "numeric",
+    timeZone: "Asia/Tashkent",
+  }).format(now);
+  const fullDate = new Intl.DateTimeFormat("ru-RU", {
     day: "numeric",
     month: "long",
     year: "numeric",
@@ -47,7 +52,7 @@ function buildTodayDateAnswer(): string {
   })
     .format(now)
     .replace(/\s?г\.$/, " года");
-  return `Сегодня ${formatted}.`;
+  return { year, fullDate };
 }
 
 /** Снимок метрик для AI — 3 мин (актуальнее после оплат). */
@@ -176,8 +181,13 @@ export class AIAssistantService {
       if (!safeMessage) {
         return { answer: "Пустой запрос", suggestions: [] };
       }
+      if (YEAR_QUERY_PATTERN.test(safeMessage)) {
+        const { year } = getTashkentDateInfo();
+        return { answer: `Сейчас ${year} год.`, suggestions: [] };
+      }
       if (DATE_QUERY_PATTERN.test(safeMessage)) {
-        return { answer: buildTodayDateAnswer(), suggestions: [] };
+        const { fullDate } = getTashkentDateInfo();
+        return { answer: `Сегодня ${fullDate}.`, suggestions: [] };
       }
       if (process.env.AI_TEST_MODE === "true") {
         return { answer: "AI работает (тест)", suggestions: [] };

@@ -20,6 +20,26 @@ import type {
 const AI_ROUTER_UNAVAILABLE = "AI временно недоступен. Проверьте настройку OpenAI API.";
 
 const formatSum = (value: number): string => `${Math.round(value).toLocaleString("ru-RU")} сум`;
+const YEAR_QUERY_PATTERN = /(какой\s+сейчас\s+год|какой\s+год\s+сейчас|сейчас\s+какой\s+год|текущий\s+год)/i;
+const DATE_QUERY_PATTERN =
+  /(какое\s+сегодня\s+число|какое\s+число\s+сегодня|какая\s+сегодня\s+дата|какая\s+дата|сегодняшн(?:яя|ее)\s+дата|сегодняшн(?:ее|яя)\s+число|какой\s+сегодня\s+день)/i;
+
+function getTashkentDateInfo(): { year: string; fullDate: string } {
+  const now = new Date();
+  const year = new Intl.DateTimeFormat("ru-RU", {
+    year: "numeric",
+    timeZone: "Asia/Tashkent",
+  }).format(now);
+  const fullDate = new Intl.DateTimeFormat("ru-RU", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone: "Asia/Tashkent",
+  })
+    .format(now)
+    .replace(/\s?г\.$/, " года");
+  return { year, fullDate };
+}
 
 type Deps = AIExecutorDependencies &
   AIValidationDependencies & {
@@ -123,6 +143,14 @@ export class AIService {
   ): Promise<string> {
     const safeMessage = String(message ?? "").trim();
     if (!safeMessage) return "Пустой запрос.";
+    if (YEAR_QUERY_PATTERN.test(safeMessage)) {
+      const { year } = getTashkentDateInfo();
+      return `Сейчас ${year} год.`;
+    }
+    if (DATE_QUERY_PATTERN.test(safeMessage)) {
+      const { fullDate } = getTashkentDateInfo();
+      return `Сегодня ${fullDate}.`;
+    }
 
     if (!checkAIRequestAccess(auth.role, safeMessage)) {
       return AI_ACCESS_DENIED_MESSAGE;

@@ -12,6 +12,7 @@ import { normalizePaymentMethod } from "../interfaces/billingTypes";
 import { dbPool } from "../../config/database";
 import { ApiError } from "../../middleware/errorHandler";
 import { parseMoneyColumn } from "../../utils/numbers";
+import { requireClinicId } from "../../tenancy/clinicContext";
 
 type PaymentRow = {
   id: string | number;
@@ -54,8 +55,9 @@ const PAID_SUM_EXPR = `
 
 export class PostgresPaymentsRepository implements IPaymentsRepository {
   async findAll(filters: PaymentFilters = {}): Promise<Payment[]> {
-    const clauses: string[] = ["deleted_at IS NULL"];
-    const values: Array<number | string> = [];
+    const clinicId = requireClinicId();
+    const clauses: string[] = ["deleted_at IS NULL", "clinic_id = $1"];
+    const values: Array<number | string> = [clinicId];
 
     if (filters.invoiceId !== undefined) {
       values.push(filters.invoiceId);
@@ -90,6 +92,7 @@ export class PostgresPaymentsRepository implements IPaymentsRepository {
   }
 
   async findById(id: number): Promise<Payment | null> {
+    const clinicId = requireClinicId();
     const result = await dbPool.query<PaymentRow>(
       `
         SELECT
@@ -104,10 +107,11 @@ export class PostgresPaymentsRepository implements IPaymentsRepository {
           void_reason
         FROM payments
         WHERE id = $1
+          AND clinic_id = $2
           AND deleted_at IS NULL
         LIMIT 1
       `,
-      [id]
+      [id, clinicId]
     );
     if (result.rows.length === 0) {
       return null;
@@ -116,6 +120,7 @@ export class PostgresPaymentsRepository implements IPaymentsRepository {
   }
 
   async findByIdIncludingVoided(id: number): Promise<Payment | null> {
+    const clinicId = requireClinicId();
     const result = await dbPool.query<PaymentRow>(
       `
         SELECT
@@ -129,10 +134,10 @@ export class PostgresPaymentsRepository implements IPaymentsRepository {
           deleted_at,
           void_reason
         FROM payments
-        WHERE id = $1
+        WHERE id = $1 AND clinic_id = $2
         LIMIT 1
       `,
-      [id]
+      [id, clinicId]
     );
     if (result.rows.length === 0) {
       return null;
@@ -144,6 +149,7 @@ export class PostgresPaymentsRepository implements IPaymentsRepository {
     userId: number,
     key: string
   ): Promise<Payment | null> {
+    const clinicId = requireClinicId();
     const result = await dbPool.query<PaymentRow>(
       `
         SELECT
@@ -159,11 +165,12 @@ export class PostgresPaymentsRepository implements IPaymentsRepository {
         FROM payments
         WHERE created_by = $1
           AND idempotency_key = $2
+          AND clinic_id = $3
           AND idempotency_key_client_supplied = true
           AND deleted_at IS NULL
         LIMIT 1
       `,
-      [userId, key]
+      [userId, key, clinicId]
     );
     if (result.rows.length === 0) {
       return null;
@@ -172,9 +179,11 @@ export class PostgresPaymentsRepository implements IPaymentsRepository {
   }
 
   async create(input: PaymentCreateInput): Promise<Payment> {
+    const clinicId = requireClinicId();
     const result = await dbPool.query<PaymentRow>(
       `
         INSERT INTO payments (
+          clinic_id,
           invoice_id,
           amount,
           method,
@@ -182,7 +191,7 @@ export class PostgresPaymentsRepository implements IPaymentsRepository {
           idempotency_key_client_supplied,
           created_by
         )
-        VALUES ($1, $2, $3, $4, $5, $6)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
         RETURNING
           id,
           invoice_id,
@@ -195,6 +204,7 @@ export class PostgresPaymentsRepository implements IPaymentsRepository {
           void_reason
       `,
       [
+        clinicId,
         input.invoiceId,
         input.amount,
         input.method,

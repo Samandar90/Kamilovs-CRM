@@ -14,6 +14,7 @@ import { normalizePaymentMethod } from "../interfaces/billingTypes";
 import { dbPool } from "../../config/database";
 import { env } from "../../config/env";
 import { parseMoneyColumn } from "../../utils/numbers";
+import { requireClinicId } from "../../tenancy/clinicContext";
 
 type ShiftRow = {
   id: string | number;
@@ -106,6 +107,7 @@ const mapEntryWithContext = (row: EntryRowWithContext): CashRegisterEntryListIte
 
 export class PostgresCashRegisterRepository implements ICashRegisterRepository {
   async findActiveShift(): Promise<CashRegisterShift | null> {
+    const clinicId = requireClinicId();
     const result = await dbPool.query<ShiftRow>(
       `
         SELECT
@@ -121,9 +123,11 @@ export class PostgresCashRegisterRepository implements ICashRegisterRepository {
           updated_at
         FROM cash_register_shifts
         WHERE closed_at IS NULL
+          AND clinic_id = $1
         ORDER BY opened_at DESC
         LIMIT 1
-      `
+      `,
+      [clinicId]
     );
     if (result.rows.length === 0) {
       return null;
@@ -132,15 +136,17 @@ export class PostgresCashRegisterRepository implements ICashRegisterRepository {
   }
 
   async openShift(input: OpenShiftInput): Promise<CashRegisterShift> {
+    const clinicId = requireClinicId();
     const result = await dbPool.query<ShiftRow>(
       `
         INSERT INTO cash_register_shifts (
+          clinic_id,
           opened_by,
           opening_balance,
           notes,
           updated_at
         )
-        VALUES ($1, $2, $3, NOW())
+        VALUES ($1, $2, $3, $4, NOW())
         RETURNING
           id,
           opened_by,
@@ -153,12 +159,13 @@ export class PostgresCashRegisterRepository implements ICashRegisterRepository {
           created_at,
           updated_at
       `,
-      [input.openedBy ?? null, input.openingBalance, input.notes ?? null]
+      [clinicId, input.openedBy ?? null, input.openingBalance, input.notes ?? null]
     );
     return mapShift(result.rows[0]);
   }
 
   async findShiftById(id: number): Promise<CashRegisterShift | null> {
+    const clinicId = requireClinicId();
     const result = await dbPool.query<ShiftRow>(
       `
         SELECT
@@ -173,10 +180,10 @@ export class PostgresCashRegisterRepository implements ICashRegisterRepository {
           created_at,
           updated_at
         FROM cash_register_shifts
-        WHERE id = $1
+        WHERE id = $1 AND clinic_id = $2
         LIMIT 1
       `,
-      [id]
+      [id, clinicId]
     );
     if (result.rows.length === 0) {
       return null;

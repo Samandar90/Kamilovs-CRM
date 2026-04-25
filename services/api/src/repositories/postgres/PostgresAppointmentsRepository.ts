@@ -17,6 +17,7 @@ import {
 } from "../../utils/appointmentTimestamps";
 import { normalizeToLocalDateTime } from "../../utils/localDateTime";
 import { parseNumericFromPg, parseNumericInput } from "../../utils/numbers";
+import { requireClinicId } from "../../tenancy/clinicContext";
 
 type AppointmentRow = {
   id: number;
@@ -91,6 +92,7 @@ const mapAppointmentRow = (row: AppointmentRow): Appointment => ({
 const attachAssignedServices = async (
   appointments: Appointment[]
 ): Promise<Appointment[]> => {
+  const clinicId = requireClinicId();
   if (appointments.length === 0) {
     return appointments;
   }
@@ -105,9 +107,10 @@ const attachAssignedServices = async (
       FROM appointment_services aps
       INNER JOIN services s ON s.id = aps.service_id
       WHERE aps.appointment_id = ANY($1::bigint[])
+        AND s.clinic_id = $2
       ORDER BY aps.id ASC
     `,
-    [appointmentIds]
+    [appointmentIds, clinicId]
   );
 
   const grouped = new Map<number, AppointmentServiceAssignedSummary[]>();
@@ -150,8 +153,9 @@ const SELECT_LIST = `
 
 export class PostgresAppointmentsRepository implements IAppointmentsRepository {
   async findAll(filters: AppointmentFilters = {}): Promise<Appointment[]> {
-    const whereClauses: string[] = ["deleted_at IS NULL"];
-    const values: Array<number | string> = [];
+    const clinicId = requireClinicId();
+    const whereClauses: string[] = ["deleted_at IS NULL", "clinic_id = $1"];
+    const values: Array<number | string> = [clinicId];
 
     if (filters.patientId !== undefined) {
       values.push(filters.patientId);
@@ -203,14 +207,15 @@ export class PostgresAppointmentsRepository implements IAppointmentsRepository {
   }
 
   async findById(id: number): Promise<Appointment | null> {
+    const clinicId = requireClinicId();
     const result = await dbPool.query<AppointmentRow>(
       `
         SELECT ${SELECT_LIST}
         FROM appointments
-        WHERE id = $1
+        WHERE id = $1 AND clinic_id = $2
         LIMIT 1
       `,
-      [id]
+      [id, clinicId]
     );
     if (result.rows.length === 0) {
       return null;
@@ -220,6 +225,7 @@ export class PostgresAppointmentsRepository implements IAppointmentsRepository {
   }
 
   async create(data: AppointmentCreateInput): Promise<Appointment> {
+    const clinicId = requireClinicId();
     const startAt = assertAppointmentTimestampForDb(data.startAt, "startAt");
     const endAt = assertAppointmentTimestampForDb(data.endAt, "endAt");
 
@@ -235,6 +241,7 @@ export class PostgresAppointmentsRepository implements IAppointmentsRepository {
     const result = await dbPool.query<AppointmentRow>(
       `
         INSERT INTO appointments (
+          clinic_id,
           patient_id,
           doctor_id,
           service_id,
@@ -250,10 +257,11 @@ export class PostgresAppointmentsRepository implements IAppointmentsRepository {
           treatment,
           notes
         )
-        VALUES ($1, $2, $3, $4, $5::timestamptz, $6::timestamptz, $7, $8, $9, $10, $11, $12, $13, $14)
+        VALUES ($1, $2, $3, $4, $5, $6::timestamptz, $7::timestamptz, $8, $9, $10, $11, $12, $13, $14, $15)
         RETURNING ${SELECT_LIST}
       `,
       [
+        clinicId,
         data.patientId,
         data.doctorId,
         data.serviceId,
@@ -274,6 +282,7 @@ export class PostgresAppointmentsRepository implements IAppointmentsRepository {
   }
 
   async update(id: number, data: AppointmentUpdateInput): Promise<Appointment | null> {
+    const clinicId = requireClinicId();
     const current = await this.findById(id);
     if (!current) {
       return null;
@@ -352,12 +361,13 @@ export class PostgresAppointmentsRepository implements IAppointmentsRepository {
 
     setClauses.push(`updated_at = NOW()`);
     values.push(id);
+    values.push(clinicId);
 
     const result = await dbPool.query<AppointmentRow>(
       `
         UPDATE appointments
         SET ${setClauses.join(", ")}
-        WHERE id = $${values.length} AND deleted_at IS NULL
+        WHERE id = $${values.length - 1} AND clinic_id = $${values.length} AND deleted_at IS NULL
         RETURNING ${SELECT_LIST}
       `,
       values
@@ -369,16 +379,17 @@ export class PostgresAppointmentsRepository implements IAppointmentsRepository {
   }
 
   async updatePrice(id: number, price: number): Promise<Appointment | null> {
+    const clinicId = requireClinicId();
     const result = await dbPool.query<AppointmentRow>(
       `
         UPDATE appointments
         SET
           price = $2,
           updated_at = NOW()
-        WHERE id = $1 AND deleted_at IS NULL
+        WHERE id = $1 AND clinic_id = $3 AND deleted_at IS NULL
         RETURNING ${SELECT_LIST}
       `,
-      [id, coerceAppointmentPriceForDb(price)]
+      [id, coerceAppointmentPriceForDb(price), clinicId]
     );
     if (result.rows.length === 0) {
       return null;
@@ -391,6 +402,7 @@ export class PostgresAppointmentsRepository implements IAppointmentsRepository {
     cancelReason: string | null,
     cancelledBy: number
   ): Promise<Appointment | null> {
+    const clinicId = requireClinicId();
     const result = await dbPool.query<AppointmentRow>(
       `
         UPDATE appointments
@@ -400,10 +412,10 @@ export class PostgresAppointmentsRepository implements IAppointmentsRepository {
           cancelled_at = NOW(),
           cancelled_by = $3,
           updated_at = NOW()
-        WHERE id = $1 AND deleted_at IS NULL
+        WHERE id = $1 AND clinic_id = $4 AND deleted_at IS NULL
         RETURNING ${SELECT_LIST}
       `,
-      [id, cancelReason, cancelledBy]
+      [id, cancelReason, cancelledBy, clinicId]
     );
     if (result.rows.length === 0) {
       return null;
@@ -506,14 +518,15 @@ export class PostgresAppointmentsRepository implements IAppointmentsRepository {
   }
 
   async softDelete(id: number): Promise<boolean> {
+    const clinicId = requireClinicId();
     const result = await dbPool.query<{ id: number }>(
       `
         UPDATE appointments
         SET deleted_at = NOW(), updated_at = NOW()
-        WHERE id = $1 AND deleted_at IS NULL
+        WHERE id = $1 AND clinic_id = $2 AND deleted_at IS NULL
         RETURNING id
       `,
-      [id]
+      [id, clinicId]
     );
     return result.rows.length > 0;
   }
@@ -524,13 +537,15 @@ export class PostgresAppointmentsRepository implements IAppointmentsRepository {
     endAt: string,
     excludeId?: number
   ): Promise<boolean> {
+    const clinicId = requireClinicId();
     const s = assertAppointmentTimestampForDb(startAt, "startAt");
     const e = assertAppointmentTimestampForDb(endAt, "endAt");
-    const values: Array<number | string> = [doctorId, e, s];
+    const values: Array<number | string> = [doctorId, e, s, clinicId];
     let query = `
       SELECT 1
       FROM appointments
       WHERE doctor_id = $1
+        AND clinic_id = $4
         AND deleted_at IS NULL
         AND start_at < $2::timestamptz
         AND end_at > $3::timestamptz
@@ -547,54 +562,60 @@ export class PostgresAppointmentsRepository implements IAppointmentsRepository {
   }
 
   async patientExists(id: number): Promise<boolean> {
+    const clinicId = requireClinicId();
     const result = await dbPool.query<{ exists: boolean }>(
-      "SELECT EXISTS(SELECT 1 FROM patients WHERE id = $1 AND deleted_at IS NULL) AS exists",
-      [id]
+      "SELECT EXISTS(SELECT 1 FROM patients WHERE id = $1 AND clinic_id = $2 AND deleted_at IS NULL) AS exists",
+      [id, clinicId]
     );
     return result.rows[0]?.exists === true;
   }
 
   async doctorExists(id: number): Promise<boolean> {
+    const clinicId = requireClinicId();
     const result = await dbPool.query<{ exists: boolean }>(
-      "SELECT EXISTS(SELECT 1 FROM doctors WHERE id = $1) AS exists",
-      [id]
+      "SELECT EXISTS(SELECT 1 FROM doctors WHERE id = $1 AND clinic_id = $2) AS exists",
+      [id, clinicId]
     );
     return result.rows[0]?.exists === true;
   }
 
   async serviceExists(id: number): Promise<boolean> {
+    const clinicId = requireClinicId();
     const result = await dbPool.query<{ exists: boolean }>(
-      "SELECT EXISTS(SELECT 1 FROM services WHERE id = $1 AND deleted_at IS NULL) AS exists",
-      [id]
+      "SELECT EXISTS(SELECT 1 FROM services WHERE id = $1 AND clinic_id = $2 AND deleted_at IS NULL) AS exists",
+      [id, clinicId]
     );
     return result.rows[0]?.exists === true;
   }
 
   async isServiceActive(serviceId: number): Promise<boolean> {
+    const clinicId = requireClinicId();
     const result = await dbPool.query<{ exists: boolean }>(
       `
         SELECT EXISTS(
           SELECT 1
           FROM services
           WHERE id = $1
+            AND clinic_id = $2
             AND active = true
             AND deleted_at IS NULL
         ) AS exists
       `,
-      [serviceId]
+      [serviceId, clinicId]
     );
     return result.rows[0]?.exists === true;
   }
 
   async getServiceDuration(serviceId: number): Promise<number | null> {
+    const clinicId = requireClinicId();
     const result = await dbPool.query<{ duration: number }>(
       `
         SELECT duration
         FROM services
-        WHERE id = $1 AND deleted_at IS NULL
+        WHERE id = $1 AND clinic_id = $2 AND deleted_at IS NULL
         LIMIT 1
       `,
-      [serviceId]
+      [serviceId, clinicId]
     );
     if (result.rows.length === 0) {
       return null;
@@ -604,14 +625,15 @@ export class PostgresAppointmentsRepository implements IAppointmentsRepository {
   }
 
   async getServicePrice(serviceId: number): Promise<number | null> {
+    const clinicId = requireClinicId();
     const result = await dbPool.query<{ price: string | number }>(
       `
         SELECT price
         FROM services
-        WHERE id = $1 AND deleted_at IS NULL
+        WHERE id = $1 AND clinic_id = $2 AND deleted_at IS NULL
         LIMIT 1
       `,
-      [serviceId]
+      [serviceId, clinicId]
     );
     if (result.rows.length === 0) {
       return null;
@@ -623,6 +645,7 @@ export class PostgresAppointmentsRepository implements IAppointmentsRepository {
     serviceId: number,
     doctorId: number
   ): Promise<boolean> {
+    const clinicId = requireClinicId();
     const result = await dbPool.query<{ exists: boolean }>(
       `
         SELECT EXISTS(
@@ -630,9 +653,10 @@ export class PostgresAppointmentsRepository implements IAppointmentsRepository {
           FROM doctor_services
           WHERE service_id = $1
             AND doctor_id = $2
+            AND EXISTS (SELECT 1 FROM services s WHERE s.id = $1 AND s.clinic_id = $3)
         ) AS exists
       `,
-      [serviceId, doctorId]
+      [serviceId, doctorId, clinicId]
     );
     return result.rows[0]?.exists === true;
   }
@@ -642,13 +666,17 @@ export class PostgresAppointmentsRepository implements IAppointmentsRepository {
     serviceId: number,
     createdBy: number | null
   ): Promise<AppointmentServiceAssignment> {
+    const clinicId = requireClinicId();
     const result = await dbPool.query<AppointmentServiceRow>(
       `
         INSERT INTO appointment_services (appointment_id, service_id, created_by)
-        VALUES ($1, $2, $3)
+        SELECT $1, $2, $3
+        WHERE EXISTS (
+          SELECT 1 FROM appointments a WHERE a.id = $1 AND a.clinic_id = $4
+        )
         RETURNING id, appointment_id, service_id, created_by, created_at
       `,
-      [appointmentId, serviceId, createdBy]
+      [appointmentId, serviceId, createdBy, clinicId]
     );
     const row = result.rows[0];
     return {
@@ -757,14 +785,15 @@ export class PostgresAppointmentsRepository implements IAppointmentsRepository {
     appointmentId: number,
     billingStatus: AppointmentBillingStatus
   ): Promise<Appointment | null> {
+    const clinicId = requireClinicId();
     const result = await dbPool.query<AppointmentRow>(
       `
         UPDATE appointments
         SET billing_status = $2, updated_at = NOW()
-        WHERE id = $1 AND deleted_at IS NULL
+        WHERE id = $1 AND clinic_id = $3 AND deleted_at IS NULL
         RETURNING ${SELECT_LIST}
       `,
-      [appointmentId, billingStatus]
+      [appointmentId, billingStatus, clinicId]
     );
     if (result.rows.length === 0) {
       return null;

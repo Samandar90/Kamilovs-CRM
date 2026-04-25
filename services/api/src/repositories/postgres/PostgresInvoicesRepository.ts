@@ -12,6 +12,7 @@ import type {
 import { env } from "../../config/env";
 import { dbPool } from "../../config/database";
 import { parseMoneyColumn, parseRequiredNumber } from "../../utils/numbers";
+import { requireClinicId } from "../../tenancy/clinicContext";
 
 type InvoiceRow = {
   id: string | number;
@@ -104,14 +105,16 @@ const syntheticItems = (invoiceId: number, total: number): InvoiceItem[] => [
 ];
 
 async function loadItems(invoiceId: number): Promise<InvoiceItem[]> {
+  const clinicId = requireClinicId();
   const res = await dbPool.query<InvoiceItemRow>(
     `
       SELECT id, invoice_id, service_id, description, quantity, unit_price, line_total
       FROM invoice_items
       WHERE invoice_id = $1
+        AND clinic_id = $2
       ORDER BY id ASC
     `,
-    [invoiceId]
+    [invoiceId, clinicId]
   );
   return res.rows.map(mapItemRow);
 }
@@ -121,23 +124,26 @@ async function insertItems(
   invoiceId: number,
   items: InvoiceItemInput[]
 ): Promise<void> {
+  const clinicId = requireClinicId();
   for (const item of items) {
     await client.query(
       `
         INSERT INTO invoice_items (
           invoice_id,
+          clinic_id,
           service_id,
           description,
           quantity,
           unit_price,
           line_total
         )
-        VALUES ($1, $2, $3, $4, $5, $6)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
       `,
       (() => {
         const linePrice = bindInvoiceNumeric("invoice_items.unit_price", item.unitPrice);
         const rowValues: (string | number | null)[] = [
           invoiceId,
+          clinicId,
           item.serviceId != null ? bindInvoiceNumeric("invoice_items.service_id", item.serviceId) : null,
           String(item.description ?? ""),
           1,
@@ -156,8 +162,9 @@ async function insertItems(
 
 export class PostgresInvoicesRepository implements IInvoicesRepository {
   async findAll(filters: InvoiceFilters = {}): Promise<InvoiceSummary[]> {
-    const clauses: string[] = ["deleted_at IS NULL"];
-    const values: Array<number | string> = [];
+    const clinicId = requireClinicId();
+    const clauses: string[] = ["deleted_at IS NULL", "clinic_id = $1"];
+    const values: Array<number | string> = [clinicId];
 
     if (filters.patientId !== undefined) {
       values.push(filters.patientId);
@@ -196,6 +203,7 @@ export class PostgresInvoicesRepository implements IInvoicesRepository {
   }
 
   async findByAppointmentId(appointmentId: number): Promise<InvoiceSummary | null> {
+    const clinicId = requireClinicId();
     const result = await dbPool.query<InvoiceRow>(
       `
         SELECT
@@ -212,11 +220,12 @@ export class PostgresInvoicesRepository implements IInvoicesRepository {
           ${paidSubquery}
         FROM invoices
         WHERE appointment_id = $1
+          AND clinic_id = $2
           AND deleted_at IS NULL
         ORDER BY created_at DESC
         LIMIT 1
       `,
-      [appointmentId]
+      [appointmentId, clinicId]
     );
     if (result.rows.length === 0) {
       return null;
@@ -225,6 +234,7 @@ export class PostgresInvoicesRepository implements IInvoicesRepository {
   }
 
   async findById(id: number): Promise<Invoice | null> {
+    const clinicId = requireClinicId();
     const inv = await dbPool.query<InvoiceRow>(
       `
         SELECT
@@ -240,10 +250,10 @@ export class PostgresInvoicesRepository implements IInvoicesRepository {
           updated_at,
           ${paidSubquery}
         FROM invoices
-        WHERE id = $1 AND deleted_at IS NULL
+        WHERE id = $1 AND clinic_id = $2 AND deleted_at IS NULL
         LIMIT 1
       `,
-      [id]
+      [id, clinicId]
     );
     if (inv.rows.length === 0) {
       return null;
@@ -263,6 +273,7 @@ export class PostgresInvoicesRepository implements IInvoicesRepository {
   }
 
   async create(input: InvoiceCreateInput, items: InvoiceItemInput[]): Promise<InvoiceSummary> {
+    const clinicId = requireClinicId();
     if (items.length === 0) {
       throw new Error("PostgresInvoicesRepository.create: items must not be empty");
     }
@@ -272,6 +283,7 @@ export class PostgresInvoicesRepository implements IInvoicesRepository {
       await client.query("BEGIN");
 
       const insertHeaderValues: (string | number | null)[] = [
+        clinicId,
         String(input.number ?? "").trim() || `INV-${Date.now()}`,
         bindInvoiceNumeric("patient_id", input.patientId),
         input.appointmentId == null ? null : bindInvoiceNumeric("appointment_id", input.appointmentId),
@@ -289,6 +301,7 @@ export class PostgresInvoicesRepository implements IInvoicesRepository {
       const result = await client.query<Omit<InvoiceRow, "paid_amount">>(
         `
           INSERT INTO invoices (
+            clinic_id,
             number,
             patient_id,
             appointment_id,
@@ -298,7 +311,7 @@ export class PostgresInvoicesRepository implements IInvoicesRepository {
             total,
             paid_amount
           )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
           RETURNING
             id,
             number,

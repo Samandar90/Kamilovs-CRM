@@ -7,9 +7,11 @@ import type {
   UsersFilters,
 } from "../interfaces/userTypes";
 import { dbPool } from "../../config/database";
+import { requireClinicId } from "../../tenancy/clinicContext";
 
 type UserRow = {
   id: string | number;
+  clinic_id: string | number;
   username: string;
   password_hash: string;
   full_name: string;
@@ -33,6 +35,7 @@ const normalizeUsername = (username: string): string => username.trim().toLowerC
 
 const mapRow = (row: UserRow): User => ({
   id: Number(row.id),
+  clinicId: Number(row.clinic_id),
   username: row.username,
   password: row.password_hash,
   fullName: row.full_name,
@@ -53,6 +56,7 @@ const mapRow = (row: UserRow): User => ({
 
 const SELECT_FIELDS = `
   u.id,
+  u.clinic_id,
   u.username,
   u.password_hash,
   COALESCE(NULLIF(TRIM(u.full_name), ''), u.username) AS full_name,
@@ -69,6 +73,7 @@ const SELECT_FIELDS = `
 
 const RETURNING_FIELDS = `
   id,
+  clinic_id,
   username,
   password_hash,
   COALESCE(NULLIF(TRIM(full_name), ''), username) AS full_name,
@@ -85,8 +90,9 @@ const RETURNING_FIELDS = `
 
 export class PostgresUsersRepository implements IUsersRepository {
   async findAll(filters: UsersFilters = {}): Promise<User[]> {
-    const clauses: string[] = ["u.deleted_at IS NULL"];
-    const values: unknown[] = [];
+    const clinicId = requireClinicId();
+    const clauses: string[] = ["u.deleted_at IS NULL", "u.clinic_id = $1"];
+    const values: unknown[] = [clinicId];
     if (filters.role !== undefined) {
       values.push(filters.role);
       clauses.push(`u.role = $${values.length}`);
@@ -115,14 +121,15 @@ export class PostgresUsersRepository implements IUsersRepository {
   }
 
   async findById(id: number): Promise<User | null> {
+    const clinicId = requireClinicId();
     const result = await dbPool.query<UserRow>(
       `
         SELECT ${SELECT_FIELDS}
         FROM users u
-        WHERE u.id = $1 AND u.deleted_at IS NULL
+        WHERE u.id = $1 AND u.deleted_at IS NULL AND u.clinic_id = $2
         LIMIT 1
       `,
-      [id]
+      [id, clinicId]
     );
     if (result.rows.length === 0) return null;
     return mapRow(result.rows[0]);
@@ -164,6 +171,7 @@ export class PostgresUsersRepository implements IUsersRepository {
     doctorId: number,
     excludeUserId?: number
   ): Promise<number | null> {
+    const clinicId = requireClinicId();
     const result = await dbPool.query<{ id: string | number }>(
       `
         SELECT u.id
@@ -171,30 +179,33 @@ export class PostgresUsersRepository implements IUsersRepository {
         WHERE u.doctor_id = $1
           AND u.role = 'doctor'
           AND u.deleted_at IS NULL
+          AND u.clinic_id = $3
           AND ($2::bigint IS NULL OR u.id <> $2::bigint)
         LIMIT 1
       `,
-      [doctorId, excludeUserId ?? null]
+      [doctorId, excludeUserId ?? null, clinicId]
     );
     if (result.rows.length === 0) return null;
     return Number(result.rows[0].id);
   }
 
   async create(data: CreateUserInput): Promise<User> {
+    const clinicId = requireClinicId();
     const username = normalizeUsername(data.username);
     const doctorId = data.role === "doctor" ? data.doctorId ?? null : null;
     const result = await dbPool.query<UserRow>(
       `
-        INSERT INTO users (username, password_hash, full_name, role, is_active, doctor_id)
-        VALUES ($1, $2, $3, $4, $5, $6)
+        INSERT INTO users (clinic_id, username, password_hash, full_name, role, is_active, doctor_id)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
         RETURNING ${RETURNING_FIELDS}
       `,
-      [username, data.password, data.fullName, data.role, data.isActive ?? true, doctorId]
+      [clinicId, username, data.password, data.fullName, data.role, data.isActive ?? true, doctorId]
     );
     return mapRow(result.rows[0]);
   }
 
   async update(id: number, data: UpdateUserInput): Promise<User | null> {
+    const clinicId = requireClinicId();
     const sets: string[] = [];
     const values: unknown[] = [];
     let i = 1;
@@ -219,11 +230,12 @@ export class PostgresUsersRepository implements IUsersRepository {
       return this.findById(id);
     }
     values.push(id);
+    values.push(clinicId);
     const result = await dbPool.query<UserRow>(
       `
         UPDATE users
         SET ${sets.join(", ")}
-        WHERE id = $${i} AND deleted_at IS NULL
+        WHERE id = $${i} AND deleted_at IS NULL AND clinic_id = $${i + 1}
         RETURNING ${RETURNING_FIELDS}
       `,
       values
@@ -233,45 +245,48 @@ export class PostgresUsersRepository implements IUsersRepository {
   }
 
   async delete(id: number): Promise<boolean> {
+    const clinicId = requireClinicId();
     const result = await dbPool.query<{ id: string }>(
       `
         UPDATE users
         SET deleted_at = NOW(),
             is_active = false,
             updated_at = NOW()
-        WHERE id = $1 AND deleted_at IS NULL
+        WHERE id = $1 AND deleted_at IS NULL AND clinic_id = $2
         RETURNING id
       `,
-      [id]
+      [id, clinicId]
     );
     return result.rows.length > 0;
   }
 
   async toggleActive(id: number): Promise<User | null> {
+    const clinicId = requireClinicId();
     const result = await dbPool.query<UserRow>(
       `
         UPDATE users
         SET is_active = NOT is_active,
             updated_at = NOW()
-        WHERE id = $1 AND deleted_at IS NULL
+        WHERE id = $1 AND deleted_at IS NULL AND clinic_id = $2
         RETURNING ${RETURNING_FIELDS}
       `,
-      [id]
+      [id, clinicId]
     );
     if (result.rows.length === 0) return null;
     return mapRow(result.rows[0]);
   }
 
   async updatePassword(id: number, passwordHash: string): Promise<User | null> {
+    const clinicId = requireClinicId();
     const result = await dbPool.query<UserRow>(
       `
         UPDATE users
         SET password_hash = $2,
             updated_at = NOW()
-        WHERE id = $1 AND deleted_at IS NULL
+        WHERE id = $1 AND deleted_at IS NULL AND clinic_id = $3
         RETURNING ${RETURNING_FIELDS}
       `,
-      [id, passwordHash]
+      [id, passwordHash, clinicId]
     );
     if (result.rows.length === 0) return null;
     return mapRow(result.rows[0]);
@@ -285,6 +300,7 @@ export class PostgresUsersRepository implements IUsersRepository {
       lockedUntil: string | null;
     }>
   ): Promise<User | null> {
+    const clinicId = requireClinicId();
     const sets: string[] = ["updated_at = NOW()"];
     const values: unknown[] = [];
     let i = 1;
@@ -301,11 +317,12 @@ export class PostgresUsersRepository implements IUsersRepository {
       values.push(patch.lockedUntil);
     }
     values.push(id);
+    values.push(clinicId);
     const result = await dbPool.query<UserRow>(
       `
         UPDATE users u
         SET ${sets.join(", ")}
-        WHERE u.id = $${i} AND u.deleted_at IS NULL
+        WHERE u.id = $${i} AND u.deleted_at IS NULL AND u.clinic_id = $${i + 1}
         RETURNING ${RETURNING_FIELDS}
       `,
       values

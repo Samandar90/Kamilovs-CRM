@@ -11,6 +11,7 @@ export type { CreateUserInput, UpdateUserInput, User, UsersFilters };
 
 const toUser = (record: UserRecord): User => ({
   id: record.id,
+  clinicId: record.clinicId,
   username: record.username,
   password: record.password,
   fullName: record.fullName,
@@ -89,6 +90,7 @@ export class MockUsersRepository implements IUsersRepository {
     const created: UserRecord = {
       id: nextId(),
       username: data.username,
+      clinicId: 1,
       password: data.password,
       fullName: data.fullName,
       role: data.role,

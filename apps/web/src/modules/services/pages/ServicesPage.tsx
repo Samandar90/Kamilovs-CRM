@@ -128,6 +128,7 @@ export const ServicesPage: React.FC = () => {
   }, [toast]);
 
   React.useEffect(() => {
+    if (window.innerWidth < 768) return;
     searchInputRef.current?.focus();
   }, []);
 

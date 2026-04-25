@@ -125,6 +125,7 @@ export const DoctorsPage: React.FC = () => {
   }, [successMessage]);
 
   React.useEffect(() => {
+    if (window.innerWidth < 768) return;
     searchInputRef.current?.focus();
   }, []);
 

@@ -24,7 +24,12 @@ export const AIAssistantPage = () => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = useCallback(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    window.setTimeout(() => {
+      messagesEndRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "end",
+      });
+    }, 50);
   }, []);
 
   useEffect(() => {
@@ -60,6 +65,12 @@ export const AIAssistantPage = () => {
   useEffect(() => {
     scrollToBottom();
   }, [messages, scrollToBottom]);
+
+  useEffect(() => {
+    if (!loadingHistory) {
+      scrollToBottom();
+    }
+  }, [loadingHistory, scrollToBottom]);
 
   useEffect(() => {
     let cancelled = false;
@@ -101,17 +112,20 @@ export const AIAssistantPage = () => {
     setSending(true);
     setChatError(null);
     setMessages((prev) => [...prev, { role: "user", text }]);
+    scrollToBottom();
 
     try {
       const res = await aiAssistantService.ask(text);
       setMessages((prev) => [...prev, { role: "ai", text: res.answer?.trim() || "Ответ не получен." }]);
+      scrollToBottom();
     } catch (error) {
       setChatError(error instanceof Error ? error.message : "Не удалось получить ответ.");
       setMessages((prev) => [...prev, { role: "ai", text: "Не удалось получить ответ. Попробуйте ещё раз." }]);
+      scrollToBottom();
     } finally {
       setSending(false);
     }
-  }, [input, sending]);
+  }, [input, sending, scrollToBottom]);
 
   const handleSend = () => {
     void sendMessage();

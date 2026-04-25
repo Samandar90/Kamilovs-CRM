@@ -14,6 +14,12 @@ export const AIAssistantPage = () => {
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
+  const [summary, setSummary] = useState<{
+    cards: Array<{ key: string; label: string; value: string }>;
+    recommendationText: string;
+  } | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -54,6 +60,30 @@ export const AIAssistantPage = () => {
   useEffect(() => {
     scrollToBottom();
   }, [messages, scrollToBottom]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setSummaryLoading(true);
+    setSummaryError(null);
+    void aiAssistantService
+      .summary()
+      .then((data) => {
+        if (cancelled) return;
+        setSummary({
+          cards: data.cards.map((c) => ({ key: c.key, label: c.label, value: c.value })),
+          recommendationText: data.recommendationText ?? "",
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setSummaryError("Не удалось загрузить аналитику.");
+      })
+      .finally(() => {
+        if (!cancelled) setSummaryLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const clearChat = useCallback(() => {
     setChatError(null);
@@ -99,29 +129,101 @@ export const AIAssistantPage = () => {
     </button>
   );
 
+  const analyticsByKey = (key: string) => summary?.cards.find((card) => card.key === key)?.value ?? "—";
+
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-slate-50">
-      <div className="chat-wrapper flex h-full min-h-0 w-full flex-1 justify-center px-2 pt-1 md:px-4 md:pt-2">
-        <div className="chat-container flex h-full w-full max-w-[700px] min-h-0 flex-col pb-[136px] md:pb-[108px]">
-          <div className="shrink-0">
-            <AIAssistantHeader trailing={clearChatButton} />
+      <div className="flex h-full min-h-0 w-full flex-1 px-2 pt-1 md:px-4 md:pt-2">
+        <div className="mx-auto grid h-full w-full max-w-[1120px] min-h-0 grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
+          <div className="chat-wrapper flex h-full min-h-0 w-full justify-center">
+            <div className="chat-container flex h-[calc(100dvh-80px)] w-full max-w-[720px] min-h-0 flex-col">
+              <div className="shrink-0">
+                <AIAssistantHeader trailing={clearChatButton} />
+              </div>
+
+              <div className="mt-1 flex-1 min-h-0 overflow-y-auto rounded-2xl border border-slate-200 bg-slate-50/60">
+                <ChatMessageList
+                  messages={messages}
+                  loadingHistory={loadingHistory}
+                  sending={sending}
+                  onHintClick={(text) => void sendMessage(text)}
+                  messagesEndRef={messagesEndRef}
+                />
+              </div>
+
+              <div className="mt-1 hidden shrink-0 border-t border-slate-200 bg-white p-3 lg:block">
+                {chatError ? <p className="pb-1 text-center text-xs font-medium text-red-600">{chatError}</p> : null}
+                <ChatInputBar
+                  value={input}
+                  onChange={setInput}
+                  onSubmit={handleSend}
+                  disabled={sending || loadingHistory}
+                  placeholder="Спросите про выручку, пациентов..."
+                  size="desktop"
+                />
+              </div>
+            </div>
           </div>
 
-          <div
-            className="mt-1 h-[calc(100dvh-190px)] min-h-0 overflow-y-auto rounded-2xl border border-slate-200 bg-slate-50/60 md:h-[calc(100dvh-170px)]"
-          >
-            <ChatMessageList
-              messages={messages}
-              loadingHistory={loadingHistory}
-              sending={sending}
-              onHintClick={(text) => void sendMessage(text)}
-              messagesEndRef={messagesEndRef}
-            />
-          </div>
+          <aside className="hidden h-[calc(100dvh-80px)] min-h-0 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-4 shadow-sm lg:block">
+            <section>
+              <h2 className="text-sm font-semibold text-slate-900">Аналитика сегодня</h2>
+              {summaryLoading ? <p className="mt-2 text-xs text-slate-500">Загрузка...</p> : null}
+              {summaryError ? <p className="mt-2 text-xs text-rose-600">{summaryError}</p> : null}
+              {!summaryLoading && !summaryError ? (
+                <div className="mt-3 space-y-2.5">
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">Выручка</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-900">{analyticsByKey("revenueToday")}</p>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">Пациенты</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-900">{analyticsByKey("appointmentsToday")}</p>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">Статус</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-900">{analyticsByKey("noShow30d")}</p>
+                  </div>
+                </div>
+              ) : null}
+            </section>
+
+            <section className="mt-5">
+              <h3 className="text-sm font-semibold text-slate-900">Подсказки</h3>
+              <div className="mt-3 space-y-2">
+                <button
+                  type="button"
+                  onClick={() => void sendMessage("Какая выручка сегодня?")}
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-left text-sm text-slate-700 transition-colors hover:bg-slate-50"
+                >
+                  Какая выручка сегодня?
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void sendMessage("Сколько пациентов сегодня?")}
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-left text-sm text-slate-700 transition-colors hover:bg-slate-50"
+                >
+                  Сколько пациентов сегодня?
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void sendMessage("Какие приёмы требуют внимания сейчас?")}
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-left text-sm text-slate-700 transition-colors hover:bg-slate-50"
+                >
+                  Какие приёмы требуют внимания сейчас?
+                </button>
+              </div>
+              {summary?.recommendationText ? (
+                <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-700">
+                  {summary.recommendationText}
+                </div>
+              ) : null}
+            </section>
+          </aside>
         </div>
       </div>
 
-      <div className="fixed bottom-[70px] left-0 right-0 z-30 px-[10px] md:bottom-4">
+      <div className="fixed bottom-[70px] left-0 right-0 z-30 px-[10px] lg:hidden">
         <div className="mx-auto w-full max-w-[700px] rounded-2xl bg-white/90 backdrop-blur-sm">
           {chatError ? <p className="pb-1 text-center text-xs font-medium text-red-600">{chatError}</p> : null}
           <ChatInputBar

@@ -37,6 +37,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   const { user, logout } = useAuth();
   const title = getTitleForPath(location.pathname);
   const lockMainScroll = location.pathname === "/ai-assistant";
+  const isAiAssistantScreen = location.pathname === "/ai-assistant";
   const isDoctorWorkspaceScreen = location.pathname.startsWith("/doctor-workspace/");
 
   return (
@@ -46,7 +47,8 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
         <header
           className={cn(
             "sticky top-0 z-30 flex h-12 max-md:h-11 shrink-0 items-center justify-between gap-2 border-b border-slate-200/80 bg-white/95 px-3 shadow-[0_1px_0_rgba(15,23,42,0.04)] backdrop-blur-sm md:gap-4 md:px-5",
-            isDoctorWorkspaceScreen && "hidden md:flex"
+            isDoctorWorkspaceScreen && "hidden md:flex",
+            isAiAssistantScreen && "max-md:hidden"
           )}
         >
           <div className="flex min-w-0 flex-1 items-center gap-2 md:gap-3">

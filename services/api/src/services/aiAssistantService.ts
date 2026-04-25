@@ -34,6 +34,21 @@ export type { AIAssistantAskResponse, ClinicFactsSnapshot, SummaryCard } from ".
 
 const FALLBACK_CRM = "Не удалось получить данные CRM";
 const UNSUPPORTED_REPLY = "Я работаю только с медициной и системой CRM.";
+const DATE_QUERY_PATTERN =
+  /(какое\s+сегодня\s+число|какое\s+число\s+сегодня|какая\s+сегодня\s+дата|какая\s+дата|сегодняшн(?:яя|ее)\s+дата|сегодняшн(?:ее|яя)\s+число|какой\s+сегодня\s+день)/i;
+
+function buildTodayDateAnswer(): string {
+  const now = new Date();
+  const formatted = new Intl.DateTimeFormat("ru-RU", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone: "Asia/Tashkent",
+  })
+    .format(now)
+    .replace(/\s?г\.$/, " года");
+  return `Сегодня ${formatted}.`;
+}
 
 /** Снимок метрик для AI — 3 мин (актуальнее после оплат). */
 const METRICS_CACHE_TTL_MS = 3 * 60 * 1000;
@@ -160,6 +175,9 @@ export class AIAssistantService {
       const safeMessage = String(message ?? "").trim();
       if (!safeMessage) {
         return { answer: "Пустой запрос", suggestions: [] };
+      }
+      if (DATE_QUERY_PATTERN.test(safeMessage)) {
+        return { answer: buildTodayDateAnswer(), suggestions: [] };
       }
       if (process.env.AI_TEST_MODE === "true") {
         return { answer: "AI работает (тест)", suggestions: [] };

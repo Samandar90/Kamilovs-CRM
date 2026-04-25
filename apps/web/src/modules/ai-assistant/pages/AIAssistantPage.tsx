@@ -133,11 +133,11 @@ export const AIAssistantPage = () => {
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-slate-50">
-      <div className="flex h-full min-h-0 w-full flex-1 px-2 pt-1 md:px-4 md:pt-2">
+      <div className="flex h-full min-h-0 w-full flex-1 px-2 pt-2 md:px-4 md:pt-2">
         <div className="mx-auto grid h-full w-full max-w-[1120px] min-h-0 grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
           <div className="chat-wrapper flex h-full min-h-0 w-full justify-center">
             <div className="chat-container flex h-[calc(100dvh-80px)] w-full max-w-[720px] min-h-0 flex-col">
-              <div className="shrink-0">
+              <div className="sticky top-0 z-20 shrink-0 bg-slate-50 pb-1">
                 <AIAssistantHeader trailing={clearChatButton} />
               </div>
 

@@ -10,9 +10,8 @@ import { ChatMessage } from "../components/ChatMessage";
 import { ChatWorkspace } from "../components/ChatWorkspace";
 import { ClearedChatEmptyState, EmptyAssistantState } from "../components/EmptyAssistantState";
 import { AiIntelligenceSidebar } from "../components/AiIntelligenceSidebar";
-import { QuickPromptChips } from "../components/QuickPromptChips";
 import { TypingIndicator } from "../components/TypingIndicator";
-import { getEmptyHeroActionsForRole, getQuickPromptChipsForRole } from "../utils/roleQuickPrompts";
+import { getEmptyHeroActionsForRole } from "../utils/roleQuickPrompts";
 import { useSmartAutoScroll } from "../hooks/useSmartAutoScroll";
 import type { ThreadMessage } from "../types";
 import { mergeSmartSuggestions } from "../utils/smartSuggestions";
@@ -31,7 +30,6 @@ export const AIAssistantPage = () => {
   const { user } = useAuth();
   const userAvatar = initialsFromUser(user?.fullName ?? undefined, user?.username);
   const role = user?.role;
-  const quickChips = role ? getQuickPromptChipsForRole(role) : getQuickPromptChipsForRole("reception");
   const heroActions = role ? getEmptyHeroActionsForRole(role) : getEmptyHeroActionsForRole("reception");
 
   const [messages, setMessages] = useState<ThreadMessage[]>([]);
@@ -161,6 +159,17 @@ export const AIAssistantPage = () => {
     );
   })();
 
+  const quickActionTitle =
+    activeQuickAction === "revenue"
+      ? "Выручка сегодня"
+      : activeQuickAction === "patients"
+        ? "Пациенты"
+        : activeQuickAction === "load"
+          ? "Нагрузка"
+          : null;
+
+  const quickActionRecommendation = activeQuickAction ? quickSummary?.recommendationText ?? null : null;
+
   const handleInputFocus = useCallback(() => {
     requestAnimationFrame(() => {
       const box = chatRef.current;
@@ -284,64 +293,59 @@ export const AIAssistantPage = () => {
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-gradient-to-br from-slate-50 via-white to-slate-100/50">
-      <div className="mx-auto flex min-h-0 w-full max-w-[1400px] flex-1 flex-col overflow-y-auto overscroll-y-contain px-6 py-6 lg:overflow-hidden">
-        <div className="flex w-full min-h-0 flex-1 flex-col gap-8 lg:flex-row lg:items-stretch">
+      <div className="mx-auto flex min-h-0 w-full max-w-[1400px] flex-1 flex-col overflow-y-auto overscroll-y-contain px-4 py-4 lg:overflow-hidden lg:px-6 lg:py-6">
+        <div className="flex w-full min-h-0 flex-1 flex-col gap-5 lg:grid lg:grid-cols-[minmax(0,1fr)_340px] lg:gap-6">
           <div className="flex min-w-0 flex-1 flex-col lg:min-h-0">
-            <div className="shrink-0 space-y-5">
+            <div className="shrink-0 space-y-3 lg:space-y-4">
               <AIAssistantHeader trailing={clearChatButton} />
-              <section className="rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-sm">
+              <section className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm lg:p-4">
                 <h2 className="text-sm font-semibold text-slate-900">Быстрые команды</h2>
                 <div className="mt-3 grid grid-cols-3 gap-2">
                   <button
                     type="button"
                     onClick={() => void runQuickAction("revenue")}
-                    className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                    className="rounded-xl border border-slate-200 bg-white p-3 text-left text-sm font-semibold text-slate-800 shadow-sm transition-all duration-150 hover:border-slate-300 hover:bg-slate-50 active:scale-[0.98]"
                   >
-                    Выручка
+                    Выручка сегодня
                   </button>
                   <button
                     type="button"
                     onClick={() => void runQuickAction("patients")}
-                    className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                    className="rounded-xl border border-slate-200 bg-white p-3 text-left text-sm font-semibold text-slate-800 shadow-sm transition-all duration-150 hover:border-slate-300 hover:bg-slate-50 active:scale-[0.98]"
                   >
                     Пациенты
                   </button>
                   <button
                     type="button"
                     onClick={() => void runQuickAction("load")}
-                    className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                    className="rounded-xl border border-slate-200 bg-white p-3 text-left text-sm font-semibold text-slate-800 shadow-sm transition-all duration-150 hover:border-slate-300 hover:bg-slate-50 active:scale-[0.98]"
                   >
                     Нагрузка
                   </button>
                 </div>
-                {quickActionView ? (
-                  <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
-                    {quickActionView}
-                  </div>
-                ) : null}
               </section>
-              <QuickPromptChips
-                sectionTitle="Попробуйте спросить"
-                chips={quickChips}
-                disabled={sending || loadingHistory}
-                onSelect={(t) => void sendMessage(t)}
-              />
+
+              {quickActionView ? (
+                <section className="rounded-xl border border-slate-200 bg-slate-50 p-[14px] shadow-sm lg:hidden">
+                  {quickActionTitle ? <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{quickActionTitle}</p> : null}
+                  <div className="mt-2">{quickActionView}</div>
+                  {quickActionRecommendation ? <p className="mt-2 text-xs text-slate-600">{quickActionRecommendation}</p> : null}
+                </section>
+              ) : null}
             </div>
 
             <div className="flex min-h-0 flex-col pt-3 lg:flex-1 lg:min-h-0">
               <ChatWorkspace ref={chatRef} overlay={jumpToBottomButton}>
-                {loadingHistory ? (
-                  <p className="py-10 text-center text-sm text-neutral-500">Загрузка чата…</p>
-                ) : null}
+                {loadingHistory ? <p className="py-10 text-center text-sm text-neutral-500">Загрузка чата…</p> : null}
                 {!loadingHistory && messages.length === 0 && !sending ? (
                   showClearedPlaceholder ? (
                     <ClearedChatEmptyState />
                   ) : (
-                <EmptyAssistantState
-                  actions={heroActions}
-                  disabled={sending || loadingHistory}
-                  onSelect={(t) => void sendMessage(t)}
-                />
+                    <EmptyAssistantState
+                      actions={heroActions}
+                      disabled={sending || loadingHistory}
+                      onSelect={(t) => void sendMessage(t)}
+                    />
                   )
                 ) : null}
 
@@ -369,25 +373,30 @@ export const AIAssistantPage = () => {
               </ChatWorkspace>
             </div>
 
-            <div className="sticky bottom-0 z-20 shrink-0 border-t border-white/40 bg-gradient-to-t from-white/90 via-white/70 to-transparent py-4 backdrop-blur-xl">
+            <div className="sticky bottom-[70px] z-20 shrink-0 bg-gradient-to-t from-white/95 via-white/85 to-transparent pt-3 pb-2 backdrop-blur-sm lg:bottom-0 lg:border-t lg:border-white/40 lg:pt-4">
               <div className="w-full space-y-2">
-                {chatError ? (
-                  <p className="text-center text-xs font-medium text-red-600">{chatError}</p>
-                ) : null}
+                {chatError ? <p className="text-center text-xs font-medium text-red-600">{chatError}</p> : null}
                 <ChatInputBar
                   value={input}
                   onChange={handleInputChange}
                   onSubmit={handleSend}
                   onFocus={handleInputFocus}
                   disabled={sending || loadingHistory}
-                  placeholder="Спросите о выручке, пациентах или симптомах…"
+                  placeholder="Спросите про выручку, пациентов..."
                 />
               </div>
             </div>
           </div>
 
-          <aside className="w-full shrink-0 lg:w-[320px]">
-            <div className="lg:sticky lg:top-6">
+          <aside className="hidden min-h-0 w-full shrink-0 lg:block">
+            <div className="lg:sticky lg:top-6 space-y-4">
+              {quickActionView ? (
+                <section className="rounded-xl border border-slate-200 bg-slate-50 p-[14px] shadow-sm">
+                  {quickActionTitle ? <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{quickActionTitle}</p> : null}
+                  <div className="mt-2">{quickActionView}</div>
+                  {quickActionRecommendation ? <p className="mt-2 text-xs text-slate-600">{quickActionRecommendation}</p> : null}
+                </section>
+              ) : null}
               <AiIntelligenceSidebar />
             </div>
           </aside>

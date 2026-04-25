@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from "react";
 import { motion } from "framer-motion";
-import { MessageSquareText, SendHorizontal } from "lucide-react";
+import { SendHorizontal } from "lucide-react";
 import { cn } from "../../../ui/utils/cn";
 
 export type ChatInputBarProps = {
@@ -37,16 +37,11 @@ export const ChatInputBar: React.FC<ChatInputBarProps> = ({
     <div className={cn("relative", className)}>
       <div
         className={cn(
-          "flex items-end gap-2 rounded-full border border-white/50 py-2 pl-4 pr-2",
-          "bg-gradient-to-r from-white/85 via-blue-50/40 to-indigo-50/35",
-          "shadow-lg backdrop-blur-xl backdrop-saturate-150",
-          "transition-[border-color,box-shadow] duration-300",
-          "focus-within:border-blue-200/80 focus-within:shadow-xl focus-within:ring-2 focus-within:ring-blue-200/90"
+          "relative rounded-2xl border border-slate-200 bg-white px-4 py-0 shadow-sm",
+          "transition-[border-color,box-shadow] duration-200",
+          "focus-within:border-blue-300/70 focus-within:shadow-[0_8px_24px_-14px_rgba(37,99,235,0.4)]"
         )}
       >
-        <div className="mb-2 ml-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/60 text-blue-600 shadow-sm ring-1 ring-white/80 backdrop-blur-sm">
-          <MessageSquareText className="h-4 w-4 opacity-90" strokeWidth={2} aria-hidden />
-        </div>
         <textarea
           ref={taRef}
           value={value}
@@ -62,7 +57,7 @@ export const ChatInputBar: React.FC<ChatInputBarProps> = ({
             }
           }}
           className={cn(
-            "max-h-[140px] min-h-[48px] w-full flex-1 resize-none border-0 bg-transparent py-2.5 pr-1 text-[15px] leading-relaxed text-slate-900 outline-none ring-0",
+            "max-h-[140px] min-h-[56px] w-full resize-none border-0 bg-transparent py-[15px] pr-12 text-[16px] leading-relaxed text-slate-900 outline-none ring-0",
             "placeholder:text-slate-400",
             "focus:ring-0",
             "disabled:cursor-not-allowed disabled:opacity-45"
@@ -71,16 +66,16 @@ export const ChatInputBar: React.FC<ChatInputBarProps> = ({
         <motion.button
           type="button"
           disabled={disabled || !value.trim()}
-          whileHover={{ scale: 1.05 }}
+          whileHover={{ scale: 1.04 }}
           whileTap={{ scale: 0.94 }}
           transition={{ type: "spring", stiffness: 500, damping: 26 }}
           onClick={onSubmit}
           aria-label="Отправить"
           className={cn(
-            "mb-1.5 mr-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full",
-            "bg-gradient-to-br from-blue-600 via-indigo-600 to-violet-600 text-white",
-            "shadow-md shadow-blue-500/25",
-            "transition-[opacity,box-shadow] duration-200 hover:shadow-lg hover:shadow-blue-500/30",
+            "absolute right-2 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full",
+            "bg-blue-600 text-white",
+            "shadow-sm",
+            "transition-[opacity,box-shadow] duration-200 hover:bg-blue-700 hover:shadow-md",
             "disabled:pointer-events-none disabled:opacity-25"
           )}
         >

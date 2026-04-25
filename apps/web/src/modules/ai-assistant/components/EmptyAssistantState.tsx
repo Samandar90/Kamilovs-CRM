@@ -59,17 +59,8 @@ export const EmptyAssistantState: React.FC<EmptyAssistantStateProps> = ({
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, delay: 0.06, ease: [0.16, 1, 0.3, 1] }}
     >
-      Спросите меня о системе или медицине
+      Задайте вопрос ассистенту
     </motion.h2>
-
-    <motion.p
-      className="relative mt-3 max-w-md text-[15px] leading-relaxed text-neutral-500"
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.35, delay: 0.12, ease: [0.16, 1, 0.3, 1] }}
-    >
-      Я могу помочь с выручкой, пациентами, записями и медицинскими вопросами.
-    </motion.p>
 
     <div className="relative mt-12 grid w-full max-w-2xl grid-cols-1 gap-3 sm:grid-cols-2">
       {actions.slice(0, 4).map((item, i) => (

@@ -77,9 +77,6 @@ export const AIAssistantHeader: React.FC<AIAssistantHeaderProps> = ({ className,
               Онлайн
             </span>
           </div>
-          <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-slate-500">
-            Умный помощник по работе клиники, аналитике и ежедневным решениям
-          </p>
         </div>
       </div>
     </motion.div>

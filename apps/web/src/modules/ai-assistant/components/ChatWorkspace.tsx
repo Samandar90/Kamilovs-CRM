@@ -22,7 +22,7 @@ export const ChatWorkspace = forwardRef<HTMLDivElement, ChatWorkspaceProps>(
           ref={ref}
           className={cn(
             "min-h-0 w-full flex-1 basis-0 scroll-smooth overflow-y-auto overscroll-contain px-5 py-7 sm:px-8 sm:py-8",
-            "max-h-[calc(100dvh-260px)] sm:max-h-[calc(100dvh-280px)]",
+            "max-h-[calc(100dvh-220px)] sm:max-h-[calc(100dvh-250px)] lg:max-h-[calc(100dvh-280px)]",
             "[scrollbar-color:rgba(148,163,184,0.4)_transparent]",
             "[scrollbar-width:thin]",
             "[&::-webkit-scrollbar]:w-[5px]",

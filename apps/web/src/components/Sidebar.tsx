@@ -5,6 +5,7 @@ import { useAuth } from "../auth/AuthContext";
 import type { UserRole } from "../auth/types";
 import { useNavigation } from "../navigation/useNavigation";
 import type { NavigationItem } from "../navigation/navigationConfig";
+import { Logo } from "../shared/ui/Logo";
 
 const ICON_STROKE = 1.65;
 const iconClass = "h-[18px] w-[18px] shrink-0 transition-transform duration-200 ease-out";
@@ -175,11 +176,12 @@ export const Sidebar: React.FC = () => {
   return (
     <aside className="z-20 hidden h-full w-[260px] shrink-0 flex-col overflow-x-hidden border-r border-slate-200/80 bg-gradient-to-b from-slate-50 to-slate-100/90 md:flex">
       <div
-        className="crm-sidebar-enter px-4 pb-3 pt-5"
+        className="crm-sidebar-enter border-b border-gray-100 px-4 py-4"
         style={{ animationDelay: `${nextDelay()}ms` }}
       >
-        <div className="text-[15px] font-semibold tracking-tight text-[#0f172a]">Kamilovs clinic</div>
-        <div className="mt-0.5 text-[12px] font-normal text-[#94a3b8]">Внутренняя система</div>
+        <div className="inline-flex transition-transform duration-300 ease-out hover:scale-[1.02]">
+          <Logo size={34} withText />
+        </div>
       </div>
 
       <nav className="flex-1 space-y-5 overflow-y-auto px-3 pb-3 pt-1">

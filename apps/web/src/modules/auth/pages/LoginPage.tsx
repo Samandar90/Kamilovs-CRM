@@ -1,8 +1,10 @@
 import React, { useState } from "react";
 import { Navigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { ActivitySquare, CalendarDays, Eye, EyeOff, Lock, ShieldCheck, User, Users } from "lucide-react";
+import { Eye, EyeOff, Lock, User } from "lucide-react";
 import { useAuth } from "../../../auth/AuthContext";
+import { Logo } from "../../../shared/ui/Logo";
+import { BRANDING } from "../../../shared/config/branding";
 
 const WRONG_CREDENTIALS_MSG = "Неверный логин или пароль";
 
@@ -22,10 +24,6 @@ const mapLoginApiError = (message: string): string => {
   }
   return message;
 };
-
-function CursorGlow() {
-  return null;
-}
 
 export const LoginPage: React.FC = () => {
   const { login, isAuthenticated, isLoading, error, clearError } = useAuth();
@@ -58,55 +56,24 @@ export const LoginPage: React.FC = () => {
 
   const displayError = formError ?? (error ? mapLoginApiError(error) : null);
 
-  const features = [
-    { icon: Users, title: "Пациенты" },
-    { icon: CalendarDays, title: "Расписание" },
-    { icon: ActivitySquare, title: "Аналитика" },
-  ];
-
   return (
-    <div className="min-h-screen flex relative overflow-hidden">
-      <CursorGlow />
-
-      <div className="hidden lg:flex w-1/2 relative overflow-hidden bg-[#0B1120] text-white">
-        <div className="absolute inset-0 bg-[linear-gradient(160deg,#0B1120_0%,#0F172A_100%)]" />
-        <div className="relative z-10 flex h-full w-full flex-col justify-center pl-20 pr-12">
-          <div className="max-w-[480px]">
-          <h1 className="text-[48px] font-semibold leading-[1.1] tracking-tight">
-            Управление клиникой
-            <br />
-            в <span className="text-blue-400">одном месте</span>
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-gradient-to-br from-[#F8FAFC] to-[#EEF2F7] px-4 py-10">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(600px_circle_at_20%_10%,rgba(99,102,241,0.10),transparent_48%)]" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(560px_circle_at_80%_18%,rgba(56,189,248,0.08),transparent_48%)]" />
+      <div className="relative z-10 w-full max-w-[420px]">
+        <div className="mb-7 flex flex-col items-center text-center">
+          <Logo size={64} className="justify-center" />
+          <h1 className="mt-4 text-[30px] font-bold leading-tight tracking-tight text-[#111827]">
+            {BRANDING.productName}
           </h1>
-
-          <p className="mt-4 max-w-[360px] text-white/60">Цифровая система для современной клиники</p>
-
-          <div className="mt-7 flex flex-col gap-3">
-            {features.map((item) => (
-              <div
-                key={item.title}
-                className="group inline-flex w-fit items-center gap-3 text-white/70 transition duration-200 hover:translate-x-0.5 hover:text-white"
-              >
-                <item.icon size={16} className="text-white/55 transition group-hover:text-white/80" />
-                <span className="text-sm">{item.title}</span>
-              </div>
-            ))}
-          </div>
-
-          <div className="mt-8 inline-flex items-center gap-2 text-xs text-white/45">
-            <ShieldCheck size={14} />
-            Ваши данные под надёжной защитой
-          </div>
-          </div>
+          <p className="mt-1 text-sm text-slate-500">{BRANDING.productTagline}</p>
         </div>
-      </div>
 
-      <div className="relative z-10 flex-1 flex items-center justify-center bg-gradient-to-br from-[#F8FAFC] to-[#EEF2F7]">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(560px_circle_at_84%_20%,rgba(99,102,241,0.10),transparent_45%)]" />
         <motion.div
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.35, ease: "easeOut" }}
-          className="w-[400px] rounded-2xl border border-[#E5E7EB] bg-white p-8 shadow-[0_12px_28px_rgba(15,23,42,0.08)]"
+          className="rounded-2xl border border-[#E5E7EB] bg-white p-8 shadow-[0_12px_28px_rgba(15,23,42,0.08)]"
         >
           <h2 className="mb-1 text-[26px] leading-tight font-semibold text-[#111827]">
             Добро пожаловать

@@ -1,4 +1,5 @@
 import { formatMoney } from "../lib/formatMoney";
+import { BRANDING } from "../config/branding";
 
 const TELEGRAM_LINK = "https://t.me/kamilovsclinic";
 const TELEGRAM_QR_URL =
@@ -51,15 +52,19 @@ export function buildReceiptHTML(data: ReceiptTemplateData): string {
 
   const doctorValue =
     data.doctor && data.doctor.trim() !== "" ? data.doctor : "—";
+  const clinicName =
+    data.clinicName && data.clinicName.trim() !== "" ? data.clinicName : BRANDING.clinicName;
 
-  const logoBlock =
-    data.logoUrl && data.logoUrl.trim() !== ""
-      ? `<div style="text-align:center;margin-bottom:2px;"><img src="${escapeHtml(data.logoUrl)}" alt="logo" style="width:60px;margin-bottom:6px;" /></div>`
-      : "";
+  const resolvedLogoUrl =
+    data.logoUrl && data.logoUrl.trim() !== "" ? data.logoUrl.trim() : `${window.location.origin}/logo.png`;
+
+  const logoBlock = `<div style="text-align:center;margin:0 0 4px;">
+      <img src="${escapeHtml(resolvedLogoUrl)}" alt="logo" style="display:block;width:56px;height:auto;margin:0 auto;" />
+    </div>`;
 
   return `<div id="receipt" style="width:80mm;margin:0;padding:8px 10px;box-sizing:border-box;font-family:monospace;font-size:11px;line-height:1.3;color:#000;background:#fff;">
       ${logoBlock}
-      <div style="text-align:center;font-weight:700;font-size:13px;letter-spacing:.06em;text-transform:uppercase;">${escapeHtml(data.clinicName)}</div>
+      <div style="text-align:center;font-weight:700;font-size:13px;letter-spacing:.06em;text-transform:uppercase;">${escapeHtml(clinicName)}</div>
       <div style="text-align:center;margin-top:2px;">Квитанция</div>
       <div style="border-top:1px dashed #000;margin:6px 0;"></div>
 

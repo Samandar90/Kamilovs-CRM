@@ -1,4 +1,5 @@
 import { NavLink, Outlet } from "react-router-dom";
+import { BRANDING } from "../shared/config/branding";
 
 const navItems = [
   { to: "/dashboard", label: "Dashboard" },
@@ -19,7 +20,7 @@ export const Layout = () => {
     <div className="min-h-screen bg-gray-50">
       <div className="flex min-h-screen">
         <aside className="w-[240px] shrink-0 border-r border-gray-200 bg-white p-5">
-          <div className="mb-6 text-xl font-semibold text-gray-900">Kamilovs clinic</div>
+          <div className="mb-6 text-xl font-semibold text-gray-900">{BRANDING.productName}</div>
           <nav className="space-y-1">
             {navItems.map((item) => (
               <NavLink key={item.to} to={item.to} className={({ isActive }) => navClass(isActive)}>

@@ -5,6 +5,7 @@ import { Eye, EyeOff, Lock, User } from "lucide-react";
 import { useAuth } from "../../../auth/AuthContext";
 import { Logo } from "../../../shared/ui/Logo";
 import { BRANDING } from "../../../shared/config/branding";
+import { useClinic } from "../../../hooks/useClinic";
 
 const WRONG_CREDENTIALS_MSG = "Неверный логин или пароль";
 
@@ -27,6 +28,8 @@ const mapLoginApiError = (message: string): string => {
 
 export const LoginPage: React.FC = () => {
   const { login, isAuthenticated, isLoading, error, clearError } = useAuth();
+  const { clinic } = useClinic();
+  const brandName = clinic.name || BRANDING.productName;
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(false);
@@ -39,8 +42,8 @@ export const LoginPage: React.FC = () => {
   }
 
   React.useEffect(() => {
-    document.title = `${BRANDING.productName} — Вход`;
-  }, []);
+    document.title = `${brandName} — Вход`;
+  }, [brandName]);
 
   const canSubmit = Boolean(username.trim() && password.trim());
 
@@ -68,7 +71,7 @@ export const LoginPage: React.FC = () => {
         <div className="mb-7 flex flex-col items-center text-center">
           <Logo size={64} className="justify-center" />
           <h1 className="mt-4 text-[30px] font-bold leading-tight tracking-tight text-[#111827]">
-            {BRANDING.productName}
+            {brandName}
           </h1>
           <p className="mt-1 text-sm text-slate-500">{BRANDING.productTagline}</p>
         </div>

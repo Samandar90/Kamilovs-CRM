@@ -188,7 +188,8 @@ export class PostgresUsersRepository implements IUsersRepository {
   }
 
   async create(data: CreateUserInput): Promise<User> {
-    const clinicId = requireClinicId();
+    const clinicId =
+      Number.isInteger(data.clinicId) && (data.clinicId as number) > 0 ? (data.clinicId as number) : 1;
     const username = normalizeUsername(data.username);
     const doctorId = data.role === "doctor" ? data.doctorId ?? null : null;
     const result = await dbPool.query<UserRow>(

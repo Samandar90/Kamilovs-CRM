@@ -86,10 +86,12 @@ export class MockUsersRepository implements IUsersRepository {
   }
 
   async create(data: CreateUserInput): Promise<User> {
+    const clinicId =
+      Number.isInteger(data.clinicId) && (data.clinicId as number) > 0 ? (data.clinicId as number) : 1;
     const now = new Date().toISOString();
     const created: UserRecord = {
       id: nextId(),
-      clinicId: 1,
+      clinicId,
       username: data.username,
       password: data.password,
       fullName: data.fullName,

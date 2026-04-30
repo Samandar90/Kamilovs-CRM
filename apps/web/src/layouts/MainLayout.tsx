@@ -7,6 +7,7 @@ import { cn } from "../ui/utils/cn";
 import { MobileBottomNav } from "../shared/ui/MobileBottomNav";
 import { Logo } from "@/shared/ui/Logo";
 import { BRANDING } from "../shared/config/branding";
+import { useClinic } from "../hooks/useClinic";
 
 const routeTitleMap: Record<string, string> = {
   "/": "Панель управления",
@@ -37,13 +38,15 @@ type MainLayoutProps = {
 export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   const location = useLocation();
   const { user, logout } = useAuth();
+  const { clinic } = useClinic();
   const title = getTitleForPath(location.pathname);
+  const brandName = clinic.name || BRANDING.productName;
   const lockMainScroll = location.pathname === "/ai-assistant";
   const isDoctorWorkspaceScreen = location.pathname.startsWith("/doctor-workspace/");
 
   React.useEffect(() => {
-    document.title = `${BRANDING.productName} — ${title}`;
-  }, [title]);
+    document.title = `${brandName} — ${title}`;
+  }, [brandName, title]);
 
   return (
     <div className="flex h-screen min-w-0 overflow-x-hidden bg-[#f8fafc] text-[#0f172a]">
@@ -61,7 +64,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
               to="/"
               className="truncate text-sm font-semibold tracking-tight text-slate-900 transition-colors hover:text-emerald-700"
             >
-              {BRANDING.productName}
+              {brandName}
             </Link>
             <span className="shrink-0 text-slate-300">/</span>
             <h1 className="min-w-0 truncate text-sm font-medium text-slate-500">

@@ -37,6 +37,8 @@ export const validateCreateUser = (req: Request, _res: Response, next: NextFunct
     is_active,
     fullName,
     full_name,
+    clinicId,
+    clinic_id,
     doctorId,
     doctor_id,
   } = req.body ?? {};
@@ -64,6 +66,13 @@ export const validateCreateUser = (req: Request, _res: Response, next: NextFunct
   const resolvedIsActive = isActive ?? is_active;
   if (resolvedIsActive !== undefined && typeof resolvedIsActive !== "boolean") {
     throw new ApiError(400, "Field 'isActive' must be boolean");
+  }
+  const resolvedClinicId = clinicId ?? clinic_id;
+  if (resolvedClinicId !== undefined && resolvedClinicId !== null && resolvedClinicId !== "") {
+    const parsedClinicId = Number(resolvedClinicId);
+    if (!Number.isInteger(parsedClinicId) || parsedClinicId <= 0) {
+      throw new ApiError(400, "Field 'clinic_id' must be a positive integer");
+    }
   }
   next();
 };

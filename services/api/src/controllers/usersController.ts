@@ -19,6 +19,14 @@ const parseDoctorIdBody = (body: Record<string, unknown>): number | undefined =>
   return id;
 };
 
+const parseClinicIdBody = (body: Record<string, unknown>): number | undefined => {
+  const raw = body.clinicId ?? body.clinic_id;
+  if (raw === undefined || raw === null || raw === "") return undefined;
+  const id = Number(raw);
+  if (!Number.isInteger(id) || id <= 0) return undefined;
+  return id;
+};
+
 export const listUsersController = async (req: Request, res: Response) => {
   const auth = getAuthPayload(req);
   const users = await services.users.getAllUsers(auth, {
@@ -43,12 +51,14 @@ export const createUserController = async (req: Request, res: Response) => {
   const auth = getAuthPayload(req);
   const body = req.body ?? {};
   const doctorId = parseDoctorIdBody(body as Record<string, unknown>);
+  const clinicId = parseClinicIdBody(body as Record<string, unknown>);
   const created = await services.users.createUser(auth, {
     username: body.username,
     password: body.password,
     fullName: body.fullName ?? body.full_name,
     role: body.role,
     isActive: body.isActive ?? body.is_active,
+    clinicId,
     ...(doctorId !== undefined ? { doctorId } : {}),
   });
   return res.status(201).json(created);

@@ -105,6 +105,7 @@ export class UsersService {
       fullName: data.fullName,
       role: data.role,
       isActive: data.isActive ?? true,
+      clinicId: data.clinicId ?? 1,
       doctorId: data.role === "doctor" ? data.doctorId! : null,
     });
 

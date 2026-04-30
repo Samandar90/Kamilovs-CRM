@@ -37,6 +37,8 @@ export type CreateUserInput = {
   fullName: string;
   role: UserRole;
   isActive?: boolean;
+  /** Опциональный clinic_id для мультиарендного создания пользователя. */
+  clinicId?: number;
   /** Обязателен при role === "doctor". */
   doctorId?: number | null;
 };

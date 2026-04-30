@@ -1,5 +1,6 @@
 import React from "react";
 import { BRANDING } from "../config/branding";
+import { useClinic } from "../../hooks/useClinic";
 
 type LogoProps = {
   size?: number;
@@ -8,11 +9,13 @@ type LogoProps = {
 };
 
 export const Logo: React.FC<LogoProps> = ({ size = 36, withText = false, className = "" }) => {
+  const { clinic } = useClinic();
+
   return (
     <div className={`group inline-flex max-w-full items-center gap-3 ${className}`}>
       <img
-        src="/logo.png"
-        alt={`${BRANDING.productName} logo`}
+        src={clinic.logoUrl || "/logo.png"}
+        alt={`${clinic.name || BRANDING.productName} logo`}
         width={size}
         height={size}
         className="shrink-0 rounded-xl transition-all duration-300 ease-out group-hover:scale-105 group-hover:shadow-[0_10px_28px_-12px_rgba(79,70,229,0.55)]"
@@ -20,9 +23,9 @@ export const Logo: React.FC<LogoProps> = ({ size = 36, withText = false, classNa
       {withText ? (
         <div className="min-w-0">
           <p className="truncate text-[15px] font-semibold leading-tight tracking-tight text-slate-900">
-            {BRANDING.productName}
+            {clinic.name || BRANDING.productName}
           </p>
-          <p className="mt-0.5 truncate text-[12px] text-slate-500">{BRANDING.clinicName}</p>
+          <p className="mt-0.5 truncate text-[12px] text-slate-500">{clinic.name || BRANDING.clinicName}</p>
         </div>
       ) : null}
     </div>

@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { asyncHandler } from "../middleware/asyncHandler";
 import { clinicMetaController } from "../controllers/metaController";
+import { clinicMeController } from "../controllers/clinicController";
 import { livenessCheck, readinessCheck } from "../controllers/healthController";
 import { aiDebugController } from "../controllers/aiAssistantController";
 import { env } from "../config/env";
@@ -25,6 +26,7 @@ const router = Router();
 router.get("/health", livenessCheck);
 router.get("/health/ready", asyncHandler(readinessCheck));
 router.get("/meta/clinic", requireAuth, asyncHandler(clinicMetaController));
+router.get("/clinic/me", requireAuth, asyncHandler(clinicMeController));
 router.get(
   "/debug/ai",
   requireAuth,

@@ -106,38 +106,49 @@ const attachAssignedServices = async (
     return appointments;
   }
   const appointmentIds = appointments.map((row) => row.id);
-  const result = await dbPool.query<AppointmentAssignedServiceWithDetailsRow>(
-    `
+  try {
+    const result = await dbPool.query<AppointmentAssignedServiceWithDetailsRow>(
+      `
       SELECT
         aps.appointment_id,
         s.id AS service_id,
         s.name AS service_name,
-        aps.price AS line_price
+        COALESCE(aps.price, s.price::numeric, 0::numeric) AS line_price
       FROM appointment_services aps
       INNER JOIN services s ON s.id = aps.service_id
       WHERE aps.appointment_id = ANY($1::bigint[])
         AND s.clinic_id = $2
       ORDER BY aps.id ASC
     `,
-    [appointmentIds, clinicId]
-  );
+      [appointmentIds, clinicId]
+    );
 
-  const grouped = new Map<number, AppointmentServiceAssignedSummary[]>();
-  for (const row of result.rows) {
-    const key = Number(row.appointment_id);
-    const list = grouped.get(key) ?? [];
-    list.push({
-      serviceId: Number(row.service_id),
-      name: String(row.service_name),
-      price: roundMoney2(parseNumericFromPg(row.line_price) ?? 0),
-    });
-    grouped.set(key, list);
+    const grouped = new Map<number, AppointmentServiceAssignedSummary[]>();
+    for (const row of result.rows) {
+      const key = Number(row.appointment_id);
+      const list = grouped.get(key) ?? [];
+      const rawPrice = parseNumericFromPg(row.line_price);
+      const unit = (rawPrice ?? 0) || 0;
+      list.push({
+        serviceId: Number(row.service_id),
+        name: String(row.service_name),
+        price: roundMoney2(unit),
+      });
+      grouped.set(key, list);
+    }
+
+    return appointments.map((appointment) => ({
+      ...appointment,
+      services: grouped.get(appointment.id) ?? [],
+    }));
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("[attachAssignedServices] failed; returning appointments without assigned services", err);
+    return appointments.map((appointment) => ({
+      ...appointment,
+      services: [],
+    }));
   }
-
-  return appointments.map((appointment) => ({
-    ...appointment,
-    services: grouped.get(appointment.id) ?? [],
-  }));
 };
 
 const SELECT_LIST = `
@@ -166,8 +177,9 @@ export class PostgresAppointmentsRepository implements IAppointmentsRepository {
    */
   private async syncPrimaryAppointmentServiceRow(appointmentId: number): Promise<void> {
     const clinicId = requireClinicId();
-    const updated = await dbPool.query(
-      `
+    try {
+      const updated = await dbPool.query(
+        `
         UPDATE appointment_services AS aps
         SET
           service_id = ap.service_id,
@@ -184,11 +196,11 @@ export class PostgresAppointmentsRepository implements IAppointmentsRepository {
             WHERE s2.appointment_id = ap.id
           )
       `,
-      [appointmentId, clinicId]
-    );
-    if (updated.rowCount === 0) {
-      await dbPool.query(
-        `
+        [appointmentId, clinicId]
+      );
+      if ((updated.rowCount ?? 0) === 0) {
+        await dbPool.query(
+          `
           INSERT INTO appointment_services (appointment_id, service_id, price, quantity, created_by)
           SELECT a.id, a.service_id, COALESCE(a.price::numeric, 0), 1, NULL
           FROM appointments a
@@ -196,18 +208,24 @@ export class PostgresAppointmentsRepository implements IAppointmentsRepository {
             AND a.clinic_id = $2
             AND a.deleted_at IS NULL
         `,
-        [appointmentId, clinicId]
-      );
+          [appointmentId, clinicId]
+        );
+      }
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("[syncPrimaryAppointmentServiceRow] skipped", { appointmentId }, err);
     }
   }
 
   private mapAssignmentRow(row: AppointmentServiceRow): AppointmentServiceAssignment {
+    const unit = (parseNumericFromPg(row.price) ?? 0) || 0;
+    const qty = parseAppointmentServiceQuantity(row.quantity ?? 1);
     return {
       id: Number(row.id),
       appointmentId: Number(row.appointment_id),
       serviceId: Number(row.service_id),
-      price: roundMoney2(parseNumericFromPg(row.price) ?? 0),
-      quantity: parseAppointmentServiceQuantity(row.quantity),
+      price: roundMoney2(unit),
+      quantity: qty,
       createdBy: row.created_by == null ? null : Number(row.created_by),
       createdAt: normalizeToLocalDateTime(row.created_at),
     };
@@ -341,13 +359,18 @@ export class PostgresAppointmentsRepository implements IAppointmentsRepository {
     );
     const mapped = mapAppointmentRow(result.rows[0]);
     const primaryPrice = mapped.price == null ? 0 : roundMoney2(mapped.price);
-    await dbPool.query(
-      `
+    try {
+      await dbPool.query(
+        `
         INSERT INTO appointment_services (appointment_id, service_id, price, quantity, created_by)
         VALUES ($1, $2, $3, 1, NULL)
       `,
-      [mapped.id, mapped.serviceId, primaryPrice]
-    );
+        [mapped.id, mapped.serviceId, primaryPrice]
+      );
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("[PostgresAppointmentsRepository.create] appointment_services insert failed", err);
+    }
     return mapped;
   }
 
@@ -873,29 +896,40 @@ export class PostgresAppointmentsRepository implements IAppointmentsRepository {
 
   async listServiceAssignments(appointmentId: number): Promise<AppointmentServiceAssignment[]> {
     const clinicId = requireClinicId();
-    const result = await dbPool.query<AppointmentServiceRow>(
-      `
+    try {
+      const result = await dbPool.query<AppointmentServiceRow>(
+        `
         SELECT id, appointment_id, service_id, price, quantity, created_by, created_at
         FROM appointment_services
         WHERE appointment_id = $1
           AND EXISTS (SELECT 1 FROM appointments a WHERE a.id = $1 AND a.clinic_id = $2)
         ORDER BY id ASC
       `,
-      [appointmentId, clinicId]
-    );
-    return result.rows.map((row) => this.mapAssignmentRow(row));
+        [appointmentId, clinicId]
+      );
+      return result.rows.map((row) => this.mapAssignmentRow(row));
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("[listServiceAssignments] failed", { appointmentId }, err);
+      return [];
+    }
   }
 
   async listAppointmentInvoiceLines(appointmentId: number): Promise<AppointmentInvoiceLine[]> {
     const clinicId = requireClinicId();
-    const result = await dbPool.query<{
-      service_id: number;
-      service_name: string;
-      price: string | number;
-      quantity: string | number;
-    }>(
-      `
-        SELECT aps.service_id, s.name AS service_name, aps.price, aps.quantity
+    try {
+      const result = await dbPool.query<{
+        service_id: number;
+        service_name: string;
+        line_price: string | number | null;
+        line_qty: string | number | null;
+      }>(
+        `
+        SELECT
+          aps.service_id,
+          s.name AS service_name,
+          COALESCE(aps.price, s.price::numeric, 0::numeric) AS line_price,
+          COALESCE(aps.quantity, 1::numeric) AS line_qty
         FROM appointment_services aps
         INNER JOIN services s ON s.id = aps.service_id AND s.clinic_id = $2
         WHERE aps.appointment_id = $1
@@ -908,14 +942,24 @@ export class PostgresAppointmentsRepository implements IAppointmentsRepository {
           )
         ORDER BY aps.id ASC
       `,
-      [appointmentId, clinicId]
-    );
-    return result.rows.map((row) => ({
-      serviceId: Number(row.service_id),
-      serviceName: String(row.service_name),
-      unitPrice: roundMoney2(parseNumericFromPg(row.price) ?? 0),
-      quantity: parseAppointmentServiceQuantity(row.quantity),
-    }));
+        [appointmentId, clinicId]
+      );
+      return result.rows.map((row) => {
+        const unitRaw = parseNumericFromPg(row.line_price);
+        const unitPrice = roundMoney2((unitRaw ?? 0) || 0);
+        const quantity = parseAppointmentServiceQuantity(row.line_qty ?? 1);
+        return {
+          serviceId: Number(row.service_id),
+          serviceName: String(row.service_name),
+          unitPrice,
+          quantity,
+        };
+      });
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("[listAppointmentInvoiceLines] failed", { appointmentId }, err);
+      return [];
+    }
   }
 
   async updateBillingStatus(

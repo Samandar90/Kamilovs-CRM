@@ -133,7 +133,7 @@ const resolveLineItemsFromServices = async (
         ? line.description.trim()
         : service.name;
 
-    const lineTotal = roundMoney(quantity * unitPrice);
+    const lineTotal = roundMoney((quantity || 1) * (unitPrice || 0));
 
     result.push({
       serviceId,
@@ -143,9 +143,6 @@ const resolveLineItemsFromServices = async (
       lineTotal,
     });
   }
-
-  // eslint-disable-next-line no-console
-  console.log("FINAL INVOICE ITEMS:", result);
 
   return result;
 };
@@ -302,12 +299,6 @@ export class InvoicesService {
       );
     }
 
-    // eslint-disable-next-line no-console
-    console.log(
-      "INVOICE INSERT DATA:",
-      JSON.stringify({ items: resolvedItems }, null, 2)
-    );
-
     try {
       const created = await this.invoicesRepository.create(invoiceInput, resolvedItems);
       const fullInvoice = await this.invoicesRepository.findById(created.id);
@@ -333,39 +324,45 @@ export class InvoicesService {
   }
 
   async createFromAppointment(auth: AuthTokenPayload, appointmentId: number): Promise<Invoice> {
-    const existingInvoice = await this.invoicesRepository.findByAppointmentId(appointmentId);
-    if (existingInvoice) {
-      throw new ApiError(409, "Счёт уже создан для этой записи");
+    try {
+      const existingInvoice = await this.invoicesRepository.findByAppointmentId(appointmentId);
+      if (existingInvoice) {
+        throw new ApiError(409, "Счёт уже создан для этой записи");
+      }
+
+      const [lines, appointment] = await Promise.all([
+        this.appointmentsRepository.listAppointmentInvoiceLines(appointmentId),
+        this.appointmentsRepository.findById(appointmentId),
+      ]);
+      if (!appointment) {
+        throw new ApiError(404, "Appointment not found");
+      }
+
+      if (lines.length === 0) {
+        throw new ApiError(400, "No services found for appointment");
+      }
+
+      const items = lines.map((line) => ({
+        serviceId: line.serviceId,
+        quantity: line.quantity || 1,
+        description: line.serviceName,
+        price: line.unitPrice ?? 0,
+      }));
+
+      const created = await this.create(auth, {
+        patientId: appointment.patientId,
+        appointmentId: appointment.id,
+        status: "issued",
+        discount: 0,
+        items,
+      });
+      await this.appointmentsRepository.updateBillingStatus(appointment.id, "ready_for_payment");
+      return created;
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("[InvoicesService.createFromAppointment]", { appointmentId }, err);
+      throw err;
     }
-
-    const [lines, appointment] = await Promise.all([
-      this.appointmentsRepository.listAppointmentInvoiceLines(appointmentId),
-      this.appointmentsRepository.findById(appointmentId),
-    ]);
-    if (!appointment) {
-      throw new ApiError(404, "Appointment not found");
-    }
-
-    if (lines.length === 0) {
-      throw new ApiError(400, "No services found for appointment");
-    }
-
-    const items = lines.map((line) => ({
-      serviceId: line.serviceId,
-      quantity: line.quantity,
-      description: line.serviceName,
-      price: line.unitPrice,
-    }));
-
-    const created = await this.create(auth, {
-      patientId: appointment.patientId,
-      appointmentId: appointment.id,
-      status: "issued",
-      discount: 0,
-      items,
-    });
-    await this.appointmentsRepository.updateBillingStatus(appointment.id, "ready_for_payment");
-    return created;
   }
 
   async update(

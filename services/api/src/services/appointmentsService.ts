@@ -7,6 +7,7 @@ import type {
   AppointmentCreateInput,
   AppointmentFilters,
   AppointmentServiceAssignment,
+  AppointmentServiceLineCreateInput,
   AppointmentStatus,
   AppointmentUpdateInput,
 } from "../repositories/interfaces/coreTypes";
@@ -32,7 +33,7 @@ import {
   formatLocalDateTime,
   parseLocalDateTime,
 } from "../utils/localDateTime";
-import { parseNumericInput } from "../utils/numbers";
+import { parseNumericInput, roundMoney2 } from "../utils/numbers";
 
 const ACTIVE_APPOINTMENT_STATUSES = new Set<AppointmentStatus>([
   "scheduled",
@@ -78,6 +79,46 @@ const normalizeOptionalPrice = (
     throw new ApiError(400, "Поле «цена» должно быть числом не меньше 0");
   }
   return Math.round(parsed);
+};
+
+const normalizeOptionalQuantity = (value: unknown): number | undefined => {
+  if (value === undefined || value === null) return undefined;
+  const parsed = parseNumericInput(value);
+  if (parsed === null || parsed <= 0) {
+    throw new ApiError(400, "Поле quantity должно быть числом больше 0");
+  }
+  return roundMoney2(parsed);
+};
+
+const normalizeServiceLinesPayload = (
+  raw: unknown
+): AppointmentServiceLineCreateInput[] | undefined => {
+  if (!Array.isArray(raw) || raw.length === 0) {
+    return undefined;
+  }
+  const out: AppointmentServiceLineCreateInput[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const o = item as Record<string, unknown>;
+    const sidRaw = o.serviceId ?? o.service_id;
+    const sidParsed = parseNumericInput(sidRaw);
+    const sid = sidParsed != null ? Math.trunc(sidParsed) : NaN;
+    if (!Number.isInteger(sid) || sid <= 0) continue;
+    const qtyRaw = o.quantity ?? o.qty;
+    const priceRaw = o.price ?? o.unitPrice;
+    out.push({
+      serviceId: sid,
+      price:
+        priceRaw === undefined || priceRaw === null
+          ? undefined
+          : normalizeOptionalPrice(priceRaw),
+      quantity:
+        qtyRaw === undefined || qtyRaw === null
+          ? undefined
+          : normalizeOptionalQuantity(qtyRaw),
+    });
+  }
+  return out.length > 0 ? out : undefined;
 };
 
 const ensureRelatedEntitiesExist = async (
@@ -202,10 +243,17 @@ const ensureStatusTransitionAllowed = (
 const normalizeCreateInput = (
   payload: AppointmentCreateInput
 ): AppointmentCreateInput => {
+  const extended = payload as AppointmentCreateInput & {
+    serviceLines?: unknown;
+    services?: unknown;
+  };
+  const serviceLinesRaw = extended.serviceLines ?? extended.services;
   return {
     ...payload,
     billingStatus: payload.billingStatus ?? "draft",
     price: normalizeOptionalPrice(payload.price),
+    quantity: normalizeOptionalQuantity(payload.quantity),
+    serviceLines: normalizeServiceLinesPayload(serviceLinesRaw),
     diagnosis: normalizeOptionalString(payload.diagnosis) ?? null,
     treatment: normalizeOptionalString(payload.treatment) ?? null,
     notes: normalizeOptionalString(payload.notes) ?? null,
@@ -306,6 +354,21 @@ export class AppointmentsService {
       normalizedPayload.serviceId,
       { requireActiveService: true }
     );
+
+    if (normalizedPayload.serviceLines?.length) {
+      const seen = new Set<number>([normalizedPayload.serviceId]);
+      for (const line of normalizedPayload.serviceLines) {
+        if (seen.has(line.serviceId)) continue;
+        seen.add(line.serviceId);
+        await ensureRelatedEntitiesExist(
+          this.appointmentsRepository,
+          normalizedPayload.patientId,
+          normalizedPayload.doctorId,
+          line.serviceId,
+          { requireActiveService: true }
+        );
+      }
+    }
 
     const duration = await this.appointmentsRepository.getServiceDuration(
       normalizedPayload.serviceId

@@ -124,6 +124,14 @@ type AppointmentCreateInput = {
   doctorId: number;
   serviceId: number;
   price?: number;
+  /** По умолчанию 1 на бэкенде. */
+  quantity?: number;
+  /** Несколько услуг при создании записи → строки в appointment_services. */
+  serviceLines?: Array<{
+    serviceId: number;
+    price?: number | null;
+    quantity?: number;
+  }>;
   startAt: string;
   status: AppointmentStatus;
   diagnosis?: string | null;

@@ -96,18 +96,58 @@ export class MockAppointmentsRepository implements IAppointmentsRepository {
       updatedAt: now,
     };
     getMockDb().appointments.push(created);
-    const catalogPrice =
-      getMockDb().services.find((item) => item.id === created.serviceId)?.price ?? 0;
-    const linePrice = created.price ?? catalogPrice;
-    getMockDb().appointmentServices.push({
-      id: nextId(),
-      appointmentId: created.id,
-      serviceId: created.serviceId,
-      price: linePrice,
-      quantity: 1,
-      createdBy: null,
-      createdAt: now,
-    });
+    const db = getMockDb();
+    const primaryQty = input.quantity ?? 1;
+
+    const pushLine = (serviceId: number, price: number, quantity: number): void => {
+      db.appointmentServices.push({
+        id: nextId(),
+        appointmentId: created.id,
+        serviceId,
+        price,
+        quantity,
+        createdBy: null,
+        createdAt: now,
+      });
+    };
+
+    if (input.serviceLines?.length) {
+      const rows: Array<{ serviceId: number; price: number; quantity: number }> = [];
+      const seen = new Set<number>();
+
+      for (const line of input.serviceLines) {
+        if (seen.has(line.serviceId)) continue;
+        seen.add(line.serviceId);
+        const cat = db.services.find((s) => s.id === line.serviceId)?.price ?? 0;
+        const qty = line.quantity ?? (line.serviceId === input.serviceId ? primaryQty : 1);
+        const price =
+          line.price ??
+          (line.serviceId === input.serviceId ? (input.price ?? cat) : cat);
+        rows.push({ serviceId: line.serviceId, price: price ?? 0, quantity: qty });
+      }
+
+      if (!seen.has(input.serviceId)) {
+        const cat = db.services.find((s) => s.id === input.serviceId)?.price ?? 0;
+        rows.unshift({
+          serviceId: input.serviceId,
+          price: input.price ?? cat,
+          quantity: primaryQty,
+        });
+      }
+
+      const ordered = [
+        ...rows.filter((r) => r.serviceId === input.serviceId),
+        ...rows.filter((r) => r.serviceId !== input.serviceId),
+      ];
+      for (const r of ordered) {
+        pushLine(r.serviceId, r.price, r.quantity);
+      }
+    } else {
+      const catalogPrice = db.services.find((item) => item.id === created.serviceId)?.price ?? 0;
+      const linePrice = created.price ?? catalogPrice;
+      pushLine(created.serviceId, linePrice, primaryQty);
+    }
+
     return toAppointment(created);
   }
 

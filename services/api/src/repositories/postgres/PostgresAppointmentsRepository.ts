@@ -231,6 +231,85 @@ export class PostgresAppointmentsRepository implements IAppointmentsRepository {
     };
   }
 
+  /**
+   * Строки appointment_services при создании записи: всегда хотя бы одна (основная услуга).
+   * Цена из payload или каталога services.price.
+   */
+  private async resolveInitialAppointmentServiceLines(
+    data: AppointmentCreateInput,
+    mapped: Appointment
+  ): Promise<Array<{ serviceId: number; price: number; quantity: number }>> {
+    const parseQty = (q: unknown, fallback: number): number => {
+      if (q === undefined || q === null) return fallback;
+      const n = parseNumericInput(q);
+      if (n === null || n <= 0) {
+        throw new ApiError(400, "quantity must be greater than 0");
+      }
+      return roundMoney2(n);
+    };
+
+    const primaryQty = parseQty(data.quantity, 1);
+
+    const resolveUnitPrice = async (
+      serviceId: number,
+      explicit: number | null | undefined
+    ): Promise<number> => {
+      if (explicit !== undefined && explicit !== null) {
+        const n = parseNumericInput(explicit);
+        if (n === null || n < 0) {
+          throw new ApiError(400, "Некорректная цена услуги");
+        }
+        return roundMoney2(n);
+      }
+      const cat = await this.getServicePrice(serviceId);
+      if (cat == null || cat < 0) {
+        throw new ApiError(400, "Service price is invalid");
+      }
+      return roundMoney2(cat);
+    };
+
+    if (data.serviceLines?.length) {
+      const rows: Array<{ serviceId: number; price: number; quantity: number }> = [];
+      const seen = new Set<number>();
+
+      for (const line of data.serviceLines) {
+        const sid = line.serviceId;
+        if (seen.has(sid)) continue;
+        seen.add(sid);
+        const defaultQty = sid === data.serviceId ? primaryQty : 1;
+        const qty = parseQty(line.quantity, defaultQty);
+        let explicit: number | null | undefined;
+        if (line.price !== undefined && line.price !== null) {
+          explicit = line.price;
+        } else if (sid === data.serviceId) {
+          explicit = data.price ?? mapped.price ?? undefined;
+        } else {
+          explicit = undefined;
+        }
+        const pr = await resolveUnitPrice(sid, explicit);
+        rows.push({ serviceId: sid, price: pr, quantity: qty });
+      }
+
+      if (!seen.has(data.serviceId)) {
+        const pr = await resolveUnitPrice(data.serviceId, data.price ?? mapped.price ?? undefined);
+        rows.unshift({
+          serviceId: data.serviceId,
+          price: pr,
+          quantity: primaryQty,
+        });
+      }
+
+      const primarySid = data.serviceId;
+      return [
+        ...rows.filter((r) => r.serviceId === primarySid),
+        ...rows.filter((r) => r.serviceId !== primarySid),
+      ];
+    }
+
+    const pr = await resolveUnitPrice(data.serviceId, data.price ?? mapped.price ?? undefined);
+    return [{ serviceId: data.serviceId, price: pr, quantity: primaryQty }];
+  }
+
   async findAll(filters: AppointmentFilters = {}): Promise<Appointment[]> {
     const clinicId = requireClinicId();
     const whereClauses: string[] = ["deleted_at IS NULL", "clinic_id = $1"];
@@ -317,8 +396,12 @@ export class PostgresAppointmentsRepository implements IAppointmentsRepository {
       throw new ApiError(409, "Doctor already has an appointment in this time slot");
     }
 
-    const result = await dbPool.query<AppointmentRow>(
-      `
+    const client = await dbPool.connect();
+    try {
+      await client.query("BEGIN");
+
+      const result = await client.query<AppointmentRow>(
+        `
         INSERT INTO appointments (
           clinic_id,
           patient_id,
@@ -339,39 +422,50 @@ export class PostgresAppointmentsRepository implements IAppointmentsRepository {
         VALUES ($1, $2, $3, $4, $5, $6::timestamptz, $7::timestamptz, $8, $9, $10, $11, $12, $13, $14, $15)
         RETURNING ${SELECT_LIST}
       `,
-      [
-        clinicId,
-        data.patientId,
-        data.doctorId,
-        data.serviceId,
-        data.price == null ? null : coerceAppointmentPriceForDb(data.price),
-        startAt,
-        endAt,
-        data.status,
-        data.billingStatus ?? "draft",
-        data.cancelReason ?? null,
-        null,
-        null,
-        data.diagnosis ?? null,
-        data.treatment ?? null,
-        data.notes ?? null,
-      ]
-    );
-    const mapped = mapAppointmentRow(result.rows[0]);
-    const primaryPrice = mapped.price == null ? 0 : roundMoney2(mapped.price);
-    try {
-      await dbPool.query(
-        `
-        INSERT INTO appointment_services (appointment_id, service_id, price, quantity, created_by)
-        VALUES ($1, $2, $3, 1, NULL)
-      `,
-        [mapped.id, mapped.serviceId, primaryPrice]
+        [
+          clinicId,
+          data.patientId,
+          data.doctorId,
+          data.serviceId,
+          data.price == null ? null : coerceAppointmentPriceForDb(data.price),
+          startAt,
+          endAt,
+          data.status,
+          data.billingStatus ?? "draft",
+          data.cancelReason ?? null,
+          null,
+          null,
+          data.diagnosis ?? null,
+          data.treatment ?? null,
+          data.notes ?? null,
+        ]
       );
+
+      const mapped = mapAppointmentRow(result.rows[0]);
+      const lines = await this.resolveInitialAppointmentServiceLines(data, mapped);
+
+      for (const line of lines) {
+        await client.query(
+          `
+          INSERT INTO appointment_services (appointment_id, service_id, price, quantity, created_by)
+          VALUES ($1, $2, $3, $4, NULL)
+        `,
+          [mapped.id, line.serviceId, line.price, line.quantity]
+        );
+      }
+
+      await client.query("COMMIT");
+      return mapped;
     } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error("[PostgresAppointmentsRepository.create] appointment_services insert failed", err);
+      try {
+        await client.query("ROLLBACK");
+      } catch {
+        /* noop */
+      }
+      throw err;
+    } finally {
+      client.release();
     }
-    return mapped;
   }
 
   async update(id: number, data: AppointmentUpdateInput): Promise<Appointment | null> {

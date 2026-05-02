@@ -134,11 +134,22 @@ export type PatientFilters = {
   search?: string;
 };
 
+/** Строка услуги при создании записи (несколько услуг → несколько строк в appointment_services). */
+export type AppointmentServiceLineCreateInput = {
+  serviceId: number;
+  price?: number | null;
+  quantity?: number;
+};
+
 export type AppointmentCreateInput = {
   patientId: number;
   doctorId: number;
   serviceId: number;
   price?: number | null;
+  /** Количество основной услуги (по умолчанию 1). */
+  quantity?: number;
+  /** Дополнительные услуги при создании записи (опционально). */
+  serviceLines?: AppointmentServiceLineCreateInput[];
   startAt: string;
   endAt: string;
   status: AppointmentStatus;

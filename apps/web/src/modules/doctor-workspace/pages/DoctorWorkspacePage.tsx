@@ -3,6 +3,7 @@ import { ArrowLeft } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../../../auth/AuthContext";
 import { appointmentsFlowApi, type Appointment, type Service } from "../../appointments/api/appointmentsFlowApi";
+import { cashDeskApi } from "../../billing/api/cashDeskApi";
 import kamilovsClinicLogo from "../../../assets/kamilovs-clinic-logo.png";
 
 type WorkspaceForm = {
@@ -34,6 +35,7 @@ export const DoctorWorkspacePage: React.FC = () => {
   const [submitting, setSubmitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [notice, setNotice] = React.useState<string | null>(null);
+  const [clinicPrintName, setClinicPrintName] = React.useState("Клиника");
 
   const parsedId = Number(appointmentId);
   const noServicesForDoctor = !loading && appointment !== null && servicesCatalog.length === 0;
@@ -43,11 +45,13 @@ export const DoctorWorkspacePage: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const [rows, patients, assignedRows] = await Promise.all([
+      const [rows, patients, assignedRows, clinicMeta] = await Promise.all([
         appointmentsFlowApi.listAppointments(token),
         appointmentsFlowApi.listPatients(token),
         appointmentsFlowApi.listAppointmentAssignedServices(token, parsedId).catch(() => []),
+        cashDeskApi.getClinicMeta(token).catch(() => null),
       ]);
+      setClinicPrintName(clinicMeta?.clinicName?.trim() || "Клиника");
       const found = rows.find((row) => row.id === parsedId) ?? null;
       if (!found) {
         setError("Запись не найдена");
@@ -161,6 +165,11 @@ export const DoctorWorkspacePage: React.FC = () => {
   };
 
   const printPrescription = (targetAppointment: Appointment) => {
+    const safeClinicName = clinicPrintName
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
     const serviceLines = assignedServiceIds.length
       ? assignedServiceIds
           .map((id) => servicesCatalog.find((s) => s.id === id)?.name ?? `Услуга #${id}`)
@@ -243,8 +252,8 @@ export const DoctorWorkspacePage: React.FC = () => {
   <body>
     <main class="sheet">
       <header class="header">
-        <img src="${kamilovsClinicLogo}" alt="Kamilovs clinic" class="logo" />
-        <div class="clinic-name">Kamilovs Clinic</div>
+        <img src="${kamilovsClinicLogo}" alt="Логотип клиники" class="logo" />
+        <div class="clinic-name">${safeClinicName}</div>
       </header>
 
       <section class="meta">

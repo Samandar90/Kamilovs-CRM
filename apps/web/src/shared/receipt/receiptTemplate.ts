@@ -1,10 +1,4 @@
 import { formatMoney } from "../lib/formatMoney";
-import { BRANDING } from "../config/branding";
-
-const TELEGRAM_LINK = "https://t.me/kamilovsclinic";
-const TELEGRAM_QR_URL =
-  "https://api.qrserver.com/v1/create-qr-code/?size=80x80&data=" +
-  encodeURIComponent(TELEGRAM_LINK);
 
 export type ReceiptTemplateItem = {
   name: string;
@@ -34,6 +28,8 @@ const escapeHtml = (value: unknown): string =>
 
 const formatMoneyUz = (value: number): string => `${formatMoney(value)} сум`;
 
+const DEFAULT_CLINIC_LABEL = "Клиника";
+
 export function buildReceiptHTML(data: ReceiptTemplateData): string {
   const itemsHtml =
     data.items.length > 0
@@ -53,7 +49,9 @@ export function buildReceiptHTML(data: ReceiptTemplateData): string {
   const doctorValue =
     data.doctor && data.doctor.trim() !== "" ? data.doctor : "—";
   const clinicName =
-    data.clinicName && data.clinicName.trim() !== "" ? data.clinicName : BRANDING.clinicName;
+    data.clinicName && data.clinicName.trim() !== ""
+      ? data.clinicName.trim()
+      : DEFAULT_CLINIC_LABEL;
 
   const resolvedLogoUrl =
     data.logoUrl && data.logoUrl.trim() !== "" ? data.logoUrl.trim() : `${window.location.origin}/logo.png`;
@@ -85,12 +83,7 @@ export function buildReceiptHTML(data: ReceiptTemplateData): string {
         <span>Оплачено</span><span>${escapeHtml(formatMoneyUz(data.paid))}</span>
       </div>
 
-      <div style="border-top:1px dashed #000;margin:6px 0;"></div>
-      <div style="text-align:center;margin-top:2px;">
-        <img src="${TELEGRAM_QR_URL}" alt="Telegram QR" width="80" height="80" style="display:block;margin:0 auto;border:0;" />
-      </div>
-      <div style="font-size:10px;text-align:center;color:#666;margin-top:3px;">наш telegram</div>
+      <div style="border-top:1px dashed #000;margin:8px 0 0;"></div>
       <div style="text-align:center;margin-top:6px;">Спасибо за визит!</div>
-      <div style="border-top:1px dashed #000;margin:6px 0 0;"></div>
     </div>`;
 }

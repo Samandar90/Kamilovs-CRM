@@ -233,22 +233,36 @@ export class PostgresInvoicesRepository implements IInvoicesRepository {
 
   async findById(id: number): Promise<Invoice | null> {
     const clinicId = requireClinicId();
-    const inv = await dbPool.query<InvoiceRow>(
+    type DetailRow = InvoiceRow & {
+      clinic_ref_id?: string | number | null;
+      clinic_name?: string | null;
+    };
+    const inv = await dbPool.query<DetailRow>(
       `
         SELECT
-          id,
-          number,
-          patient_id,
-          appointment_id,
-          subtotal,
-          discount,
-          total,
-          status,
-          created_at,
-          updated_at,
-          ${paidSubquery}
-        FROM invoices
-        WHERE id = $1 AND clinic_id = $2 AND deleted_at IS NULL
+          i.id,
+          i.number,
+          i.patient_id,
+          i.appointment_id,
+          i.subtotal,
+          i.discount,
+          i.total,
+          i.status,
+          i.created_at,
+          i.updated_at,
+          COALESCE(
+            (
+              SELECT SUM(GREATEST(0::numeric, p.amount - COALESCE(p.refunded_amount, 0)))
+              FROM payments p
+              WHERE p.invoice_id = i.id AND p.deleted_at IS NULL
+            ),
+            0
+          )::numeric AS paid_amount,
+          c.id AS clinic_ref_id,
+          c.name AS clinic_name
+        FROM invoices i
+        LEFT JOIN clinics c ON c.id = i.clinic_id
+        WHERE i.id = $1 AND i.clinic_id = $2 AND i.deleted_at IS NULL
         LIMIT 1
       `,
       [id, clinicId]
@@ -264,9 +278,19 @@ export class PostgresInvoicesRepository implements IInvoicesRepository {
       items = syntheticItems(Number(row.id), num(row.total));
     }
 
+    const clinicRef =
+      row.clinic_ref_id != null && row.clinic_name != null && String(row.clinic_name).trim() !== ""
+        ? {
+            id: Number(row.clinic_ref_id),
+            name: String(row.clinic_name).trim(),
+          }
+        : undefined;
+    const clinicName = clinicRef?.name;
+
     return {
       ...summary,
       items,
+      ...(clinicRef ? { clinic: clinicRef, clinicName } : {}),
     };
   }
 

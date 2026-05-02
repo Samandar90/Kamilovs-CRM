@@ -18,6 +18,7 @@ import { PaymentModal } from "../components/PaymentModal";
 import { InvoiceStatusBadge } from "../components/invoice/InvoiceStatusBadge";
 import { lineItemDisplayLabel } from "../components/invoice/lineItemLabel";
 import { buildReceiptHTML } from "../../../shared/receipt/receiptTemplate";
+import { resolveReceiptClinicName } from "../../../shared/receipt/resolveReceiptClinicName";
 import { printReceipt as browserPrintReceipt } from "../../../shared/receipt/printReceipt";
 import kamilovsClinicLogo from "../../../assets/kamilovs-clinic-logo.png";
 
@@ -184,7 +185,7 @@ export const InvoiceDetailsPage: React.FC = () => {
   const printReceipt = React.useCallback(
     (targetInvoice: InvoiceDetail, payment: Payment) => {
       const html = buildReceiptHTML({
-        clinicName: "KAMILOVS CLINIC",
+        clinicName: resolveReceiptClinicName(targetInvoice),
         logoUrl: kamilovsClinicLogo,
         patient: patientName || `Пациент #${targetInvoice.patientId}`,
         doctor: doctorName || null,

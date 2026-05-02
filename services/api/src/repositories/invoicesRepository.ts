@@ -71,7 +71,12 @@ export class MockInvoicesRepository implements IInvoicesRepository {
     const items = getMockDb()
       .invoiceItems.filter((row) => row.invoiceId === id)
       .map((row) => ({ ...row }));
-    return { ...toSummary(invoice), items };
+    return {
+      ...toSummary(invoice),
+      items,
+      clinic: { id: 1, name: "Клиника" },
+      clinicName: "Клиника",
+    };
   }
 
   async create(input: InvoiceCreateInput, items: InvoiceItemInput[]): Promise<InvoiceSummary> {

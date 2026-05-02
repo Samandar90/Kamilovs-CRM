@@ -5,6 +5,7 @@ import { useAuth } from "../../../auth/AuthContext";
 import { formatDateTimeRu } from "../../../utils/formatDateTime";
 import { formatSum } from "../../../utils/formatMoney";
 import { buildReceiptHTML } from "../../../shared/receipt/receiptTemplate";
+import { resolveReceiptClinicName } from "../../../shared/receipt/resolveReceiptClinicName";
 import { printReceipt } from "../../../shared/receipt/printReceipt";
 import {
   cashDeskApi,
@@ -44,6 +45,7 @@ export const CashShiftPage: React.FC = () => {
   const [patientsMap, setPatientsMap] = React.useState<Record<number, string>>({});
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
+  const [clinicMetaName, setClinicMetaName] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     const shiftId = Number(id);
@@ -57,12 +59,14 @@ export const CashShiftPage: React.FC = () => {
       setLoading(true);
       setError(null);
       try {
-        const [shiftRow, entriesRows, invoiceRows, patientRows] = await Promise.all([
+        const [shiftRow, entriesRows, invoiceRows, patientRows, meta] = await Promise.all([
           cashDeskApi.getShiftById(token, shiftId),
           cashDeskApi.listEntries(token, { shiftId }),
           cashDeskApi.listInvoices(token),
           cashDeskApi.listPatients(token),
+          cashDeskApi.getClinicMeta(token).catch(() => null),
         ]);
+        setClinicMetaName(meta?.clinicName?.trim() || null);
         setShift(shiftRow);
         setEntries(entriesRows);
         setInvoices(Object.fromEntries(invoiceRows.map((inv) => [inv.id, inv])));
@@ -108,7 +112,7 @@ export const CashShiftPage: React.FC = () => {
   const printShift = () => {
     if (!shift) return;
     const html = buildReceiptHTML({
-      clinicName: "KAMILOVS CLINIC",
+      clinicName: resolveReceiptClinicName(undefined, clinicMetaName),
       logoUrl: kamilovsClinicLogo,
       patient: "Смена кассы",
       doctor: null,

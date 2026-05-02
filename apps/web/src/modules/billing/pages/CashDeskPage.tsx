@@ -14,6 +14,7 @@ import { formatDateTimeRu } from "../../../utils/formatDateTime";
 import { formatSum } from "../../../utils/formatMoney";
 import { printReceipt } from "../../../shared/receipt/printReceipt";
 import { buildReceiptHTML } from "../../../shared/receipt/receiptTemplate";
+import { resolveReceiptClinicName } from "../../../shared/receipt/resolveReceiptClinicName";
 import { getAllServices } from "../../../shared/lib/appointments/getAllServices";
 import kamilovsClinicLogo from "../../../assets/kamilovs-clinic-logo.png";
 import {
@@ -346,7 +347,7 @@ export const CashDeskPage: React.FC = () => {
     }
     const invNum = detail?.number ?? entryInvoiceLabel(e);
     const html = buildReceiptHTML({
-      clinicName: clinicName || "KAMILOVS CLINIC",
+      clinicName: resolveReceiptClinicName(detail, clinicName),
       logoUrl: kamilovsClinicLogo,
       patient: patientLabel(e.patientId ?? detail?.patientId),
       doctor: null,

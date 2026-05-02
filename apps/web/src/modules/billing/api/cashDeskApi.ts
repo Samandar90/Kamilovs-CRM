@@ -8,6 +8,11 @@ export type InvoiceStatus =
   | "cancelled"
   | "refunded";
 
+export type InvoiceClinicInfo = {
+  id: number;
+  name: string;
+};
+
 export type InvoiceSummary = {
   id: number;
   number: string;
@@ -20,6 +25,8 @@ export type InvoiceSummary = {
   paidAmount: number;
   createdAt: string;
   updatedAt: string;
+  clinic?: InvoiceClinicInfo;
+  clinicName?: string;
 };
 
 export type InvoiceItem = {

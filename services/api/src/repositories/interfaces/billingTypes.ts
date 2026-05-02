@@ -29,6 +29,11 @@ export type InvoiceItem = {
   lineTotal: number;
 };
 
+export type InvoiceClinicInfo = {
+  id: number;
+  name: string;
+};
+
 export type Invoice = {
   id: number;
   number: string;
@@ -42,6 +47,10 @@ export type Invoice = {
   createdAt: string;
   updatedAt: string;
   items: InvoiceItem[];
+  /** Из БД при детальном запросе счёта (JOIN clinics). */
+  clinic?: InvoiceClinicInfo;
+  /** Дублирует clinic.name для клиентов без вложенного объекта. */
+  clinicName?: string;
 };
 
 export type InvoiceSummary = Omit<Invoice, "items">;
